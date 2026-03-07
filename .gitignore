@@ -1,0 +1,11 @@
+node_modules
+dist
+.env
+.DS_Store
+*.log
+blind-inventory-client/node_modules
+blind-inventory-client/dist
+blind-inventory-server/node_modules
+blind-inventory-server/dist
+blind-inventory-server/prisma/dev.db
+blind-inventory-server/prisma/dev.db-journal
