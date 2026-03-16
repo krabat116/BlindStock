@@ -1,24 +1,23 @@
 import StockStatusBadge from "./StockStatusBadge"
 import type { InventoryItem } from "../types/inventory"
+import { getStockStatus } from "../utils/getStockStatus"
 
 type InventoryTableProps = {
   items: InventoryItem[]
+  onOpenAddStock: (item: InventoryItem) => void
 }
 
-export default function InventoryTable({ items }: InventoryTableProps) {
+export default function InventoryTable({
+  items,
+  onOpenAddStock,
+}: InventoryTableProps) {
   return (
     <section className="rounded-2xl bg-white p-6 shadow-sm">
-      <div className="mb-4 flex items-center justify-between">
-        <div>
-          <h2 className="text-xl font-semibold text-gray-900">Inventory</h2>
-          <p className="text-sm text-gray-500">
-            Manage blind manufacturing components and stock levels
-          </p>
-        </div>
-
-        <button className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white transition hover:bg-blue-700">
-          Add Stock
-        </button>
+      <div className="mb-4">
+        <h2 className="text-xl font-semibold text-gray-900">Inventory</h2>
+        <p className="text-sm text-gray-500">
+          Manage blind manufacturing components and stock levels
+        </p>
       </div>
 
       <div className="overflow-x-auto">
@@ -31,6 +30,7 @@ export default function InventoryTable({ items }: InventoryTableProps) {
               <th className="px-4 py-2 font-medium">Minimum Stock</th>
               <th className="px-4 py-2 font-medium">Unit</th>
               <th className="px-4 py-2 font-medium">Status</th>
+              <th className="px-4 py-2 font-medium">Action</th>
             </tr>
           </thead>
 
@@ -44,11 +44,19 @@ export default function InventoryTable({ items }: InventoryTableProps) {
                   {item.name}
                 </td>
                 <td className="px-4 py-3">{item.category}</td>
-                <td className="px-4 py-3">{item.currentStock}</td>
+                <td className="px-4 py-3">{item.quantity}</td>
                 <td className="px-4 py-3">{item.minimumStock}</td>
                 <td className="px-4 py-3">{item.unit}</td>
+                <td className="px-4 py-3">
+                  <StockStatusBadge status={getStockStatus(item)} />
+                </td>
                 <td className="rounded-r-xl px-4 py-3">
-                  <StockStatusBadge status={item.status} />
+                  <button
+                    onClick={() => onOpenAddStock(item)}
+                    className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white transition hover:bg-blue-700"
+                  >
+                    Add Stock
+                  </button>
                 </td>
               </tr>
             ))}

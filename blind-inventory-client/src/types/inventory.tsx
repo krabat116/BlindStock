@@ -4,8 +4,7 @@ export type InventoryItem = {
   id: number
   name: string
   category: string
-  currentStock: number
+  quantity: number
   minimumStock: number
   unit: string
-  status: StockStatus
 }

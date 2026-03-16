@@ -1,46 +1,66 @@
+import { useEffect, useState } from "react"
 import InventoryTable from "../components/InventoryTable"
+import AddStockModal from "../components/AddStockModal"
 import type { InventoryItem } from "../types/inventory"
 
-const inventoryItems: InventoryItem[] = [
-  {
-    id: 1,
-    name: "Metal Chain",
-    category: "Chain",
-    currentStock: 120,
-    minimumStock: 30,
-    unit: "pcs",
-    status: "ok",
-  },
-  {
-    id: 2,
-    name: "Plastic Chain White",
-    category: "Chain",
-    currentStock: 18,
-    minimumStock: 20,
-    unit: "pcs",
-    status: "low",
-  },
-  {
-    id: 3,
-    name: "45mm Aluminium Tube",
-    category: "Aluminium Tube",
-    currentStock: 0,
-    minimumStock: 10,
-    unit: "pcs",
-    status: "out",
-  },
-  {
-    id: 4,
-    name: "White Winder",
-    category: "Winder",
-    currentStock: 64,
-    minimumStock: 15,
-    unit: "pcs",
-    status: "ok",
-  },
-]
-
 export default function InventoryPage() {
+  const [items, setItems] = useState<InventoryItem[]>([])
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
+  const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
+  const [isModalOpen, setIsModalOpen] = useState(false)
+
+  async function fetchItems() {
+    try {
+      setLoading(true)
+      setError("")
+
+      const response = await fetch("http://localhost:3001/items")
+
+      if (!response.ok) {
+        throw new Error("Failed to fetch inventory items")
+      }
+
+      const data: InventoryItem[] = await response.json()
+      setItems(data)
+    } catch (err) {
+      console.error(err)
+      setError("Could not load inventory data")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    fetchItems()
+  }, [])
+
+  function handleOpenAddStock(item: InventoryItem) {
+    setSelectedItem(item)
+    setIsModalOpen(true)
+  }
+
+  function handleCloseModal() {
+    setIsModalOpen(false)
+    setSelectedItem(null)
+  }
+
+  async function handleSaveStock(itemId: number, quantity: number) {
+    const response = await fetch(`http://localhost:3001/items/${itemId}/stock`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({ quantity }),
+    })
+
+    if (!response.ok) {
+      throw new Error("Failed to update stock")
+    }
+
+    await fetchItems()
+  }
+
   return (
     <main className="min-h-screen bg-gray-100 p-6">
       <div className="w-full">
@@ -54,7 +74,27 @@ export default function InventoryPage() {
           </p>
         </div>
 
-        <InventoryTable items={inventoryItems} />
+        {loading && (
+          <p className="text-sm text-gray-600">Loading inventory...</p>
+        )}
+
+        {error && (
+          <p className="text-sm text-red-600">{error}</p>
+        )}
+
+        {!loading && !error && (
+          <InventoryTable
+            items={items}
+            onOpenAddStock={handleOpenAddStock}
+          />
+        )}
+
+        <AddStockModal
+          isOpen={isModalOpen}
+          item={selectedItem}
+          onClose={handleCloseModal}
+          onSave={handleSaveStock}
+        />
       </div>
     </main>
   )
