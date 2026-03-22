@@ -5,19 +5,30 @@ import { getStockStatus } from "../utils/getStockStatus"
 type InventoryTableProps = {
   items: InventoryItem[]
   onOpenAddStock: (item: InventoryItem) => void
+  onOpenManageItems: () => void
 }
 
 export default function InventoryTable({
   items,
   onOpenAddStock,
+  onOpenManageItems,
 }: InventoryTableProps) {
   return (
     <section className="rounded-2xl bg-white p-6 shadow-sm">
-      <div className="mb-4">
-        <h2 className="text-xl font-semibold text-gray-900">Inventory</h2>
-        <p className="text-sm text-gray-500">
-          Manage blind manufacturing components and stock levels
-        </p>
+      <div className="mb-4 flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-semibold text-gray-900">Inventory</h2>
+          <p className="text-sm text-gray-500">
+            Manage blind manufacturing components and stock levels
+          </p>
+        </div>
+
+        <button
+          onClick={onOpenManageItems}
+          className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 transition hover:bg-gray-50"
+        >
+          Manage Items
+        </button>
       </div>
 
       <div className="overflow-x-auto">
