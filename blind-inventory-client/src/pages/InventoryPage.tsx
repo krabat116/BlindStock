@@ -7,8 +7,18 @@ import type { InventoryItem } from "../types/inventory"
 import type { InventoryTransaction } from "../types/transaction"
 import type { Category } from "../types/category"
 import EditCategoriesModal from "../components/EditCategoriesModal"
+import OrderUploadPanel from "../components/OrderUploadPanel"
+import type { OrderPreviewItem, OrderPreviewResponse } from "../types/orderPreview"
+
 
 export default function InventoryPage() {
+
+  const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+  const [orderPreview, setOrderPreview] = useState<OrderPreviewItem[]>([])
+  const [parsedRowCount, setParsedRowCount] = useState(0)
+  const [orderPreviewLoading, setOrderPreviewLoading] = useState(false)
+  const [orderPreviewError, setOrderPreviewError] = useState("")
+  
   const [items, setItems] = useState<InventoryItem[]>([])
   const [transactions, setTransactions] = useState<InventoryTransaction[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -69,11 +79,95 @@ export default function InventoryPage() {
       setLoading(false)
     }
   }
+  async function handlePreviewUpload() {
+    if (!uploadedFile) {
+      setOrderPreviewError("Please choose an Excel file.")
+      return
+    }
+
+    try {
+      setOrderPreviewLoading(true)
+      setOrderPreviewError("")
+
+      const formData = new FormData()
+      formData.append("file", uploadedFile)
+
+      const response = await fetch("http://localhost:3001/orders/preview", {
+        method: "POST",
+        body: formData,
+      })
+
+      if (!response.ok) {
+        throw new Error("Failed to preview uploaded order")
+      }
+
+      const data: OrderPreviewResponse = await response.json()
+
+      console.log("📦 Preview API response:", data)
+
+      setOrderPreview(data.preview)
+      setParsedRowCount(data.parsedRowCount)
+    } catch (err) {
+      console.error(err)
+      setOrderPreviewError("Failed to parse and preview this order file.")
+    } finally {
+      setOrderPreviewLoading(false)
+    }
+  }
+  
+  async function handleConfirmDeduction() {
+    try {
+      setOrderPreviewLoading(true)
+      setOrderPreviewError("")
+
+      const payload = {
+        previewItems: orderPreview
+          .filter((item) => item.matched && item.itemId !== null)
+          .map((item) => ({
+            itemId: item.itemId!,
+            itemName: item.itemName,
+            category: item.category,
+            quantity: item.quantity,
+            sourceRows: item.sourceRows,
+          })),
+      }
+
+      const response = await fetch("http://localhost:3001/orders/confirm-deduction", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(payload),
+      })
+
+      if (!response.ok) {
+        const errorData = await response.json().catch(() => null)
+        throw new Error(errorData?.message || "Failed to confirm deduction")
+      }
+
+      await fetchAllData()
+      handleClearPreview()
+      alert("Stock deduction completed successfully.")
+    } catch (err) {
+      console.error(err)
+      setOrderPreviewError(
+        err instanceof Error ? err.message : "Failed to confirm deduction"
+      )
+    } finally {
+      setOrderPreviewLoading(false)
+    }
+  }
 
   useEffect(() => {
     fetchAllData()
   }, [])
-
+  
+  function handleClearPreview() {
+    setUploadedFile(null)
+    setOrderPreview([])
+    setParsedRowCount(0)
+    setOrderPreviewError("")
+  }
   function handleOpenAddStock(item: InventoryItem) {
     setSelectedItem(item)
     setIsAddStockModalOpen(true)
@@ -229,6 +323,17 @@ export default function InventoryPage() {
             />
 
             <TransactionList transactions={transactions} />
+            <OrderUploadPanel
+              file={uploadedFile}
+              preview={orderPreview}
+              parsedRowCount={parsedRowCount}
+              loading={orderPreviewLoading}
+              error={orderPreviewError}
+              onFileChange={setUploadedFile}
+              onPreviewUpload={handlePreviewUpload}
+              onConfirmDeduction={handleConfirmDeduction}
+              onClearPreview={handleClearPreview}
+            />
           </>
         )}
 

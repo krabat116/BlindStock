@@ -3,6 +3,21 @@ import express from "express"
 import cors from "cors"
 import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3"
 import { PrismaClient } from "@prisma/client"
+import multer from "multer"
+import { parseRecentOrderSheet } from "./parseRecentOrderSheet"
+import { mapOrderRowToComponents } from "./orderMapping"
+
+type DeductionRequestItem = {
+  itemId: number
+  itemName: string
+  category: string
+  quantity: number
+  sourceRows: number[]
+}
+
+function normalizeItemName(value: string) {
+  return value.trim().replace(/\s+/g, " ").toUpperCase()
+}
 
 const adapter = new PrismaBetterSqlite3({
   url: process.env.DATABASE_URL || "file:./dev.db",
@@ -14,7 +29,24 @@ const app = express()
 
 app.use(cors())
 app.use(express.json())
+const upload = multer({ storage: multer.memoryStorage() })
 
+function normalizeCategoryName(value: string) {
+  const normalized = value.trim().toUpperCase()
+
+  const categoryMap: Record<string, string> = {
+    WINDER: "WINDER",
+    WINDERS: "WINDER",
+    PIN: "PIN",
+    PINS: "PIN",
+    CHAIN: "CHAIN",
+    CHAINS: "CHAIN",
+    FINISH: "FINISH",
+    FINISHES: "FINISH",
+  }
+
+  return categoryMap[normalized] ?? normalized
+}
 app.get("/", (_req, res) => {
   res.send("Blind inventory server is running")
 })
@@ -338,6 +370,185 @@ app.post("/items", async (req, res) => {
   }
 })
 
+app.post("/orders/preview", upload.single("file"), async (req, res) => {
+  try {
+    if (!req.file) {
+      return res.status(400).json({ message: "File is required" })
+    }
+
+    const parsedRows = parseRecentOrderSheet(req.file.buffer)
+
+    const flatComponents = parsedRows.flatMap(mapOrderRowToComponents)
+
+    const aggregatedMap = new Map<
+      string,
+      {
+        category: string
+        itemName: string
+        quantity: number
+        sourceRows: number[]
+      }
+    >()
+
+    for (const component of flatComponents) {
+      const key = `${component.category}::${component.itemName}`
+
+      if (!aggregatedMap.has(key)) {
+        aggregatedMap.set(key, {
+          category: component.category,
+          itemName: component.itemName,
+          quantity: 0,
+          sourceRows: [],
+        })
+      }
+
+      const existing = aggregatedMap.get(key)!
+      existing.quantity += component.quantity
+      existing.sourceRows.push(component.sourceRow)
+    }
+
+    const aggregatedComponents = Array.from(aggregatedMap.values())
+
+    const dbItems = await prisma.item.findMany({
+      include: {
+        category: true,
+      },
+    })
+
+    const preview = aggregatedComponents.map((component) => {
+      const matchedItem = dbItems.find(
+  (item) =>
+    item.name.toUpperCase() === component.itemName.toUpperCase() &&
+    normalizeCategoryName(item.category.name) ===
+      normalizeCategoryName(component.category)
+)
+
+      return {
+        category: component.category,
+        itemName: component.itemName,
+        quantity: component.quantity,
+        sourceRows: component.sourceRows,
+        matched: Boolean(matchedItem),
+        currentStock: matchedItem?.quantity ?? null,
+        itemId: matchedItem?.id ?? null,
+      }
+    })
+
+    res.json({
+      parsedRowCount: parsedRows.length,
+      preview,
+    })
+  } catch (error) {
+    console.error("Failed to preview order upload:", error)
+    res.status(500).json({ message: "Failed to preview order upload" })
+  }
+})
+
+app.post("/orders/confirm-deduction", async (req, res) => {
+  try {
+    const { previewItems } = req.body as {
+      previewItems?: DeductionRequestItem[]
+    }
+
+    if (!Array.isArray(previewItems) || previewItems.length === 0) {
+      return res.status(400).json({ message: "Preview items are required" })
+    }
+
+    // validate request shape
+    for (const item of previewItems) {
+      if (
+        !Number.isInteger(item.itemId) ||
+        typeof item.itemName !== "string" ||
+        typeof item.category !== "string" ||
+        typeof item.quantity !== "number" ||
+        item.quantity <= 0
+      ) {
+        return res.status(400).json({ message: "Invalid preview item payload" })
+      }
+    }
+
+    const itemIds = previewItems.map((item) => item.itemId)
+
+    const dbItems = await prisma.item.findMany({
+      where: {
+        id: {
+          in: itemIds,
+        },
+      },
+      include: {
+        category: true,
+      },
+    })
+
+    if (dbItems.length !== itemIds.length) {
+      return res.status(400).json({
+        message: "One or more preview items no longer exist in inventory",
+      })
+    }
+
+    // Verify exact matching and stock availability
+    for (const previewItem of previewItems) {
+      const dbItem = dbItems.find((item) => item.id === previewItem.itemId)
+
+      if (!dbItem) {
+        return res.status(400).json({
+          message: `Missing inventory item for ${previewItem.itemName}`,
+        })
+      }
+
+      const categoryMatched =
+        normalizeCategoryName(dbItem.category.name) ===
+        normalizeCategoryName(previewItem.category)
+
+      const itemNameMatched =
+        normalizeItemName(dbItem.name) === normalizeItemName(previewItem.itemName)
+
+      if (!categoryMatched || !itemNameMatched) {
+        return res.status(400).json({
+          message: `Inventory item mismatch for ${previewItem.itemName}`,
+        })
+      }
+
+      if (dbItem.quantity < previewItem.quantity) {
+        return res.status(400).json({
+          message: `Insufficient stock for ${previewItem.itemName}`,
+        })
+      }
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      for (const previewItem of previewItems) {
+        const dbItem = dbItems.find((item) => item.id === previewItem.itemId)!
+
+        await tx.item.update({
+          where: { id: dbItem.id },
+          data: {
+            quantity: {
+              decrement: previewItem.quantity,
+            },
+          },
+        })
+
+        await tx.transaction.create({
+          data: {
+            itemId: dbItem.id,
+            type: "out",
+            quantity: previewItem.quantity,
+            source: "excel_order",
+            note: `Order upload deduction (rows: ${previewItem.sourceRows.join(", ")})`,
+          },
+        })
+      }
+
+      return { success: true }
+    })
+
+    res.json(result)
+  } catch (error) {
+    console.error("Failed to confirm deduction:", error)
+    res.status(500).json({ message: "Failed to confirm deduction" })
+  }
+})
 app.delete("/items/:id", async (req, res) => {
   try {
     const itemId = Number(req.params.id)
