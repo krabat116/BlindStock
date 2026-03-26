@@ -53,7 +53,7 @@ export default function CustomersPage() {
   }, [search]);
 
   return (
-    <main className="min-h-screen bg-gray-100 p-6">
+    <main className="p-6">
       <div className="w-full">
         {/* Page header */}
         <div className="mb-6">
