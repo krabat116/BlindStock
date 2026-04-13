@@ -10,5 +10,8 @@ export type OrderPreviewItem = {
 
 export type OrderPreviewResponse = {
   parsedRowCount: number
+  orderSheetNo: number | null
+  accountName: string
+  totalItems: number
   preview: OrderPreviewItem[]
 }

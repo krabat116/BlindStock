@@ -2,11 +2,15 @@ import type { OrderPreviewItem } from "../types/orderPreview"
 
 type OrderUploadPanelProps = {
   file: File | null
+  year: string
+  month: string
   preview: OrderPreviewItem[]
   parsedRowCount: number
   loading: boolean
   error: string
   onFileChange: (file: File | null) => void
+  onYearChange: (value: string) => void
+  onMonthChange: (value: string) => void
   onPreviewUpload: () => Promise<void>
   onConfirmDeduction: () => Promise<void>
   onClearPreview: () => void
@@ -22,13 +26,34 @@ function getPreviewStatus(item: OrderPreviewItem) {
   return "ok"
 }
 
+const yearOptions = ["2020","2021","2022","2023", "2024", "2025", "2026", "2027"]
+
+const monthOptions = [
+  { value: "1", label: "January" },
+  { value: "2", label: "February" },
+  { value: "3", label: "March" },
+  { value: "4", label: "April" },
+  { value: "5", label: "May" },
+  { value: "6", label: "June" },
+  { value: "7", label: "July" },
+  { value: "8", label: "August" },
+  { value: "9", label: "September" },
+  { value: "10", label: "October" },
+  { value: "11", label: "November" },
+  { value: "12", label: "December" },
+]
+
 export default function OrderUploadPanel({
   file,
+  year,
+  month,
   preview,
   parsedRowCount,
   loading,
   error,
   onFileChange,
+  onYearChange,
+  onMonthChange,
   onPreviewUpload,
   onConfirmDeduction,
   onClearPreview,
@@ -38,6 +63,8 @@ export default function OrderUploadPanel({
     (item) => item.matched && item.currentStock !== null && item.currentStock < item.quantity
   )
 
+  const canPreview = Boolean(file && year && month) && !loading
+
   const canConfirm =
     preview.length > 0 && !hasMissingItems && !hasInsufficientStock && !loading
 
@@ -46,30 +73,97 @@ export default function OrderUploadPanel({
       <div className="mb-4">
         <h2 className="text-xl font-semibold text-gray-900">Order Upload</h2>
         <p className="text-sm text-gray-500">
-          Upload a recent order sheet and preview the default component mapping.
+          Select the order year and month, then upload an Excel file to preview
+          the mapped components.
         </p>
       </div>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-        <input
-          type="file"
-          accept=".xlsx,.xls"
-          onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
-          className="block w-full text-sm text-gray-700"
-        />
+      {/* Vertical form layout */}
+      <div className="flex flex-col gap-4">
+        <div>
+          <label
+            htmlFor="order-year"
+            className="mb-1 block text-sm font-medium text-gray-700"
+          >
+            Year
+          </label>
+          <select
+            id="order-year"
+            value={year}
+            onChange={(e) => onYearChange(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
+          >
+            <option value="">Select year</option>
+            {yearOptions.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </div>
 
-        <button
-          onClick={onPreviewUpload}
-          disabled={loading}
-          className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
-        >
-          {loading ? "Parsing..." : "Preview Upload"}
-        </button>
+        <div>
+          <label
+            htmlFor="order-month"
+            className="mb-1 block text-sm font-medium text-gray-700"
+          >
+            Month
+          </label>
+          <select
+            id="order-month"
+            value={month}
+            onChange={(e) => onMonthChange(e.target.value)}
+            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-700 focus:border-blue-500 focus:outline-none"
+          >
+            <option value="">Select month</option>
+            {monthOptions.map((option) => (
+              <option key={option.value} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div>
+          <label
+            htmlFor="order-file"
+            className="mb-1 block text-sm font-medium text-gray-700"
+          >
+            Excel File
+          </label>
+          <input
+            id="order-file"
+            type="file"
+            accept=".xlsx,.xls"
+            onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
+            className="block w-full text-sm text-gray-700"
+          />
+        </div>
+
+        <div>
+          <button
+            onClick={onPreviewUpload}
+            disabled={!canPreview}
+            className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+          >
+            {loading ? "Parsing..." : "Preview Upload"}
+          </button>
+        </div>
       </div>
 
       {file && (
         <p className="mt-3 text-sm text-gray-600">
           Selected file: <span className="font-medium">{file.name}</span>
+        </p>
+      )}
+
+      {(year || month) && (
+        <p className="mt-2 text-sm text-gray-600">
+          Order period:{" "}
+          <span className="font-medium">
+            {monthOptions.find((option) => option.value === month)?.label || "-"}{" "}
+            {year || "-"}
+          </span>
         </p>
       )}
 

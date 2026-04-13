@@ -14,6 +14,8 @@ import type { OrderPreviewItem, OrderPreviewResponse } from "../../types/orderPr
 export default function InventoryPage() {
 
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
+  const [orderYear, setOrderYear] = useState("")
+  const [orderMonth, setOrderMonth] = useState("")  
   const [orderPreview, setOrderPreview] = useState<OrderPreviewItem[]>([])
   const [parsedRowCount, setParsedRowCount] = useState(0)
   const [orderPreviewLoading, setOrderPreviewLoading] = useState(false)
@@ -29,6 +31,9 @@ export default function InventoryPage() {
   const [isManageItemsModalOpen, setIsManageItemsModalOpen] = useState(false)
   const [isEditCategoriesModalOpen, setIsEditCategoriesModalOpen] =
   useState(false)
+  const [orderSheetNo, setOrderSheetNo] = useState<number | null>(null)
+  const [orderAccountName, setOrderAccountName] = useState("")
+  const [orderTotalItems, setOrderTotalItems] = useState(0)
 
   async function fetchItems() {
     const response = await fetch("http://localhost:3001/items")
@@ -80,33 +85,49 @@ export default function InventoryPage() {
     }
   }
   async function handlePreviewUpload() {
+    if (!orderYear) {
+      setOrderPreviewError("Please select a year.")
+      return
+    }
+  
+    if (!orderMonth) {
+      setOrderPreviewError("Please select a month.")
+      return
+    }
+  
     if (!uploadedFile) {
       setOrderPreviewError("Please choose an Excel file.")
       return
     }
-
+  
     try {
       setOrderPreviewLoading(true)
       setOrderPreviewError("")
-
+  
       const formData = new FormData()
       formData.append("file", uploadedFile)
-
+      formData.append("year", orderYear)
+      formData.append("month", orderMonth)
+  
       const response = await fetch("http://localhost:3001/orders/preview", {
         method: "POST",
         body: formData,
       })
-
+  
       if (!response.ok) {
         throw new Error("Failed to preview uploaded order")
       }
-
+  
       const data: OrderPreviewResponse = await response.json()
-
+  
       console.log("📦 Preview API response:", data)
-
+  
       setOrderPreview(data.preview)
       setParsedRowCount(data.parsedRowCount)
+      setOrderSheetNo(data.orderSheetNo)
+      setOrderAccountName(data.accountName)
+      setOrderTotalItems(data.totalItems)
+
     } catch (err) {
       console.error(err)
       setOrderPreviewError("Failed to parse and preview this order file.")
@@ -121,6 +142,12 @@ export default function InventoryPage() {
       setOrderPreviewError("")
 
       const payload = {
+        year: Number(orderYear),
+        month: Number(orderMonth),
+        fileName: uploadedFile?.name ?? "",
+        accountName: orderAccountName,
+        orderSheetNo,
+        totalItems: orderTotalItems,
         previewItems: orderPreview
           .filter((item) => item.matched && item.itemId !== null)
           .map((item) => ({
@@ -163,11 +190,17 @@ export default function InventoryPage() {
   }, [])
   
   function handleClearPreview() {
-    setUploadedFile(null)
-    setOrderPreview([])
-    setParsedRowCount(0)
-    setOrderPreviewError("")
-  }
+  setUploadedFile(null)
+  setOrderYear("")
+  setOrderMonth("")
+  setOrderPreview([])
+  setParsedRowCount(0)
+  setOrderPreviewError("")
+  setOrderSheetNo(null)
+  setOrderAccountName("")
+  setOrderTotalItems(0)
+}
+
   function handleOpenAddStock(item: InventoryItem) {
     setSelectedItem(item)
     setIsAddStockModalOpen(true)
@@ -325,11 +358,15 @@ export default function InventoryPage() {
             <TransactionList transactions={transactions} />
             <OrderUploadPanel
               file={uploadedFile}
+              year={orderYear}
+              month={orderMonth}
               preview={orderPreview}
               parsedRowCount={parsedRowCount}
               loading={orderPreviewLoading}
               error={orderPreviewError}
               onFileChange={setUploadedFile}
+              onYearChange={setOrderYear}
+              onMonthChange={setOrderMonth}
               onPreviewUpload={handlePreviewUpload}
               onConfirmDeduction={handleConfirmDeduction}
               onClearPreview={handleClearPreview}

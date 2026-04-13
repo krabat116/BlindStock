@@ -44,17 +44,25 @@ model Transaction {
 
 model Customer {
   id          String   @id @default(cuid())
-  name        String
+
+  // Main customer identifier from Excel ACCOUNT field
+  accountName String   @unique
+
+  // Optional display name that can be added later manually
+  name        String?
+
   phone       String?
   email       String?
   companyName String?
   address     String?
   note        String?
+
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
   orders      CustomerOrder[]
 
+  @@index([accountName])
   @@index([name])
   @@index([phone])
   @@index([email])
@@ -62,21 +70,30 @@ model Customer {
 }
 
 model CustomerOrder {
-  id          String      @id @default(cuid())
-  customerId  String
-  orderDate   DateTime    @default(now())
-  fileName    String?
-  orderNumber String?
-  status      OrderStatus @default(PENDING)
-  note        String?
-  createdAt   DateTime    @default(now())
-  updatedAt   DateTime    @updatedAt
+  id           String      @id @default(cuid())
+  customerId   String
 
-  customer    Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
-  items       OrderItem[]
+  orderYear    Int
+  orderMonth   Int
+  orderSheetNo Int
+
+  totalItems   Int         @default(0)
+
+  fileName     String?
+  fileHash     String?
+
+  status       OrderStatus @default(PENDING)
+  note         String?
+
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  customer     Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  items        OrderItem[]
 
   @@index([customerId])
-  @@index([orderDate])
+  @@index([orderYear, orderMonth])
+  @@unique([orderYear, orderSheetNo])
 }
 
 model OrderItem {
