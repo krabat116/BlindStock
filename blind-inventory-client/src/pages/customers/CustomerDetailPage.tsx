@@ -1,236 +1,227 @@
-import { Link, useParams } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { Link, useParams } from "react-router-dom"
+import { useEffect, useState } from "react"
 
 type CustomerOrder = {
-  id: string;
-  orderSheetNo: number;
-  year: number;
-  month: number;
-  totalItems: number;
-  status: string;
-  fileName?: string | null;
-  createdAt: string;
-};
+  id: string
+  orderSheetNo: number
+  year: number
+  month: number
+  totalItems: number
+  status: string
+  fileName?: string | null
+  createdAt: string
+}
 
 type CustomerDetail = {
-  id: string;
-  accountName: string;
-  name?: string | null;
-  phone?: string | null;
-  email?: string | null;
-  createdAt: string;
-  totalOrders: number;
-  latestOrderSheetNo: number | null;
-  totalItemsOrdered: number;
-  orders: CustomerOrder[];
-};
+  id: string
+  accountName: string
+  name?: string | null
+  phone?: string | null
+  email?: string | null
+  createdAt: string
+  totalOrders: number
+  latestOrderSheetNo: number | null
+  totalItemsOrdered: number
+  orders: CustomerOrder[]
+}
 
+// ─────────────────────────────────────────────
+// Shared UI primitives
+// ─────────────────────────────────────────────
+function StatCard({
+  label,
+  value,
+}: {
+  label: string
+  value: string | number
+}) {
+  return (
+    <div className="rounded-lg bg-gray-100 px-4 py-3">
+      <p className="mb-1 text-xs font-medium uppercase tracking-wide text-gray-400">
+        {label}
+      </p>
+      <p className="text-2xl font-medium text-gray-900">{value}</p>
+    </div>
+  )
+}
+
+function Section({
+  title,
+  children,
+}: {
+  title?: string
+  children: React.ReactNode
+}) {
+  return (
+    <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+      {title && (
+        <div className="border-b border-gray-100 px-5 py-3">
+          <h2 className="text-sm font-medium text-gray-800">{title}</h2>
+        </div>
+      )}
+      {children}
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
+// Main page
+// ─────────────────────────────────────────────
 export default function CustomerDetailPage() {
-  const { id } = useParams();
+  const { id } = useParams()
 
-  const [customer, setCustomer] = useState<CustomerDetail | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [error, setError] = useState("");
+  const [customer, setCustomer] = useState<CustomerDetail | null>(null)
+  const [loading, setLoading] = useState(true)
+  const [error, setError] = useState("")
 
   useEffect(() => {
     async function fetchCustomerDetail() {
       try {
-        setLoading(true);
-        setError("");
-
-        const response = await fetch(`http://localhost:3001/customers/${id}`);
-
+        setLoading(true)
+        setError("")
+        const response = await fetch(`http://localhost:3001/customers/${id}`)
         if (!response.ok) {
-          if (response.status === 404) {
-            throw new Error("Customer not found");
-          }
-
-          throw new Error("Failed to fetch customer detail");
+          throw new Error(
+            response.status === 404 ? "Customer not found" : "Failed to fetch customer detail"
+          )
         }
-
-        const data: CustomerDetail = await response.json();
-        setCustomer(data);
+        const data: CustomerDetail = await response.json()
+        setCustomer(data)
       } catch (err) {
-        console.error(err);
-        setError(
-          err instanceof Error ? err.message : "Could not load customer detail"
-        );
+        console.error(err)
+        setError(err instanceof Error ? err.message : "Could not load customer detail")
       } finally {
-        setLoading(false);
+        setLoading(false)
       }
     }
 
-    if (id) {
-      fetchCustomerDetail();
-    }
-  }, [id]);
+    if (id) fetchCustomerDetail()
+  }, [id])
 
+  // ── Loading state ──────────────────────────
   if (loading) {
     return (
-      <main className="p-6">
-        <div className="w-full">
-          <p className="text-sm text-gray-600">Loading customer detail...</p>
-        </div>
+      <main className="min-h-screen bg-gray-50 p-6">
+        <p className="text-sm text-gray-500">Loading customer detail...</p>
       </main>
-    );
+    )
   }
 
+  // ── Error state ────────────────────────────
   if (error || !customer) {
     return (
-      <main className="p-6">
-        <div className="w-full">
-          <div className="mb-6">
-            <h1 className="text-3xl font-bold text-gray-900">
-              Customer Not Found
-            </h1>
-            <p className="mt-2 text-sm text-gray-600">
-              {error || "The requested customer record does not exist."}
-            </p>
-          </div>
-
+      <main className="min-h-screen bg-gray-50 p-6">
+        <div className="mx-auto max-w-5xl space-y-4">
+          <h1 className="text-2xl font-medium text-gray-900">Customer not found</h1>
+          <p className="text-sm text-gray-500">
+            {error || "The requested customer record does not exist."}
+          </p>
           <Link
             to="/customers"
-            className="inline-flex rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            className="inline-flex rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 transition-colors"
           >
-            Back to Customers
+            ← Back to customers
           </Link>
         </div>
       </main>
-    );
+    )
   }
 
+  // ── Main render ────────────────────────────
   return (
-    <main className="p-6">
-      <div className="w-full">
-        <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+    <main className="min-h-screen bg-gray-50 p-6">
+      <div className="mx-auto max-w-5xl space-y-5">
+
+        {/* Page header */}
+        <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           <div>
-            <h1 className="text-3xl font-bold text-gray-900">
-              Customer Detail
+            <h1 className="text-2xl font-medium text-gray-900">
+              {customer.accountName}
             </h1>
-            <p className="mt-2 text-sm text-gray-600">
-              View customer information and order history.
+            <p className="mt-1 text-sm text-gray-500">
+              Customer detail and order history
             </p>
           </div>
-
           <Link
             to="/customers"
-            className="inline-flex rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-100"
+            className="inline-flex rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-gray-100 transition-colors"
           >
-            Back to Customers
+            ← Back to customers
           </Link>
         </div>
 
-        {/* Customer information */}
-        <div className="mb-6 rounded-xl bg-white p-6 shadow-sm">
-          <h2 className="mb-4 text-lg font-semibold text-gray-900">
-            Customer Information
-          </h2>
+        {/* ── Stat cards ── */}
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          <StatCard label="Total orders" value={customer.totalOrders} />
+          <StatCard
+            label="Latest order no"
+            value={customer.latestOrderSheetNo ?? "—"}
+          />
+          <StatCard label="Items ordered" value={customer.totalItemsOrdered} />
+        </div>
 
-          <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+        {/* ── Customer information ── */}
+        <Section title="Customer information">
+          <div className="grid gap-x-6 gap-y-4 p-5 sm:grid-cols-2 lg:grid-cols-3">
             <div>
-              <p className="text-xs uppercase text-gray-500">Account</p>
-              <p className="mt-1 text-sm font-medium text-gray-900">
-                {customer.accountName}
-              </p>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Account</p>
+              <p className="mt-1 text-sm font-medium text-gray-900">{customer.accountName}</p>
             </div>
-
             <div>
-              <p className="text-xs uppercase text-gray-500">Customer Name</p>
-              <p className="mt-1 text-sm text-gray-700">
-                {customer.name || "-"}
-              </p>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Name</p>
+              <p className="mt-1 text-sm text-gray-700">{customer.name || "—"}</p>
             </div>
-
             <div>
-              <p className="text-xs uppercase text-gray-500">Phone</p>
-              <p className="mt-1 text-sm text-gray-700">
-                {customer.phone || "-"}
-              </p>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Phone</p>
+              <p className="mt-1 text-sm text-gray-700">{customer.phone || "—"}</p>
             </div>
-
             <div>
-              <p className="text-xs uppercase text-gray-500">Email</p>
-              <p className="mt-1 text-sm text-gray-700">
-                {customer.email || "-"}
-              </p>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Email</p>
+              <p className="mt-1 text-sm text-gray-700">{customer.email || "—"}</p>
             </div>
-
             <div>
-              <p className="text-xs uppercase text-gray-500">Created</p>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Created</p>
               <p className="mt-1 text-sm text-gray-700">
                 {new Date(customer.createdAt).toLocaleDateString()}
               </p>
             </div>
           </div>
-        </div>
+        </Section>
 
-        {/* Summary cards */}
-        <div className="mb-6 grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
-          <div className="rounded-xl bg-white p-5 shadow-sm">
-            <p className="text-sm text-gray-500">Total Orders</p>
-            <p className="mt-2 text-2xl font-bold text-gray-900">
-              {customer.totalOrders}
-            </p>
-          </div>
-
-          <div className="rounded-xl bg-white p-5 shadow-sm">
-            <p className="text-sm text-gray-500">Latest Order Sheet No</p>
-            <p className="mt-2 text-2xl font-bold text-gray-900">
-              {customer.latestOrderSheetNo ?? "-"}
-            </p>
-          </div>
-
-          <div className="rounded-xl bg-white p-5 shadow-sm">
-            <p className="text-sm text-gray-500">Total Items Ordered</p>
-            <p className="mt-2 text-2xl font-bold text-gray-900">
-              {customer.totalItemsOrdered}
-            </p>
-          </div>
-        </div>
-
-        {/* Order history */}
-        <div className="rounded-xl bg-white shadow-sm">
-          <div className="border-b px-6 py-4">
-            <h2 className="text-lg font-semibold text-gray-900">
-              Order History
-            </h2>
-          </div>
-
+        {/* ── Order history ── */}
+        <Section title="Order history">
           <div className="overflow-x-auto">
-            <table className="min-w-full">
+            <table className="min-w-full text-sm">
               <thead>
-                <tr className="border-b bg-gray-50 text-left text-xs uppercase text-gray-500">
-                  <th className="px-4 py-3">Order Sheet No</th>
-                  <th className="px-4 py-3">Year</th>
-                  <th className="px-4 py-3">Month</th>
-                  <th className="px-4 py-3">Total Items</th>
-                  <th className="px-4 py-3">Status</th>
+                <tr className="bg-gray-50">
+                  <th className="px-5 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-gray-400">Order sheet no</th>
+                  <th className="px-5 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-gray-400">Year</th>
+                  <th className="px-5 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-gray-400">Month</th>
+                  <th className="px-5 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-gray-400">Total items</th>
+                  <th className="px-5 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-gray-400">Status</th>
                 </tr>
               </thead>
 
-              <tbody>
+              <tbody className="divide-y divide-gray-100">
                 {customer.orders.length > 0 ? (
                   customer.orders.map((order) => (
-                    <tr key={order.id} className="border-b last:border-b-0">
-                      <td className="px-4 py-3 font-medium text-gray-900">
-                        {order.orderSheetNo}
+                    <tr key={order.id} className="hover:bg-gray-50 transition-colors">
+                      <td className="px-5 py-3 font-medium text-gray-900">
+                        #{order.orderSheetNo}
                       </td>
-                      <td className="px-4 py-3 text-gray-600">{order.year}</td>
-                      <td className="px-4 py-3 text-gray-600">{order.month}</td>
-                      <td className="px-4 py-3 text-gray-600">
-                        {order.totalItems}
-                      </td>
-                      <td className="px-4 py-3 text-gray-600">
-                        {order.status}
+                      <td className="px-5 py-3 text-gray-500">{order.year}</td>
+                      <td className="px-5 py-3 text-gray-500">{order.month}</td>
+                      <td className="px-5 py-3 text-gray-500">{order.totalItems}</td>
+                      <td className="px-5 py-3">
+                        <span className="inline-block rounded-full bg-green-50 px-2.5 py-0.5 text-xs font-medium text-green-700">
+                          {order.status}
+                        </span>
                       </td>
                     </tr>
                   ))
                 ) : (
                   <tr>
-                    <td
-                      colSpan={5}
-                      className="px-4 py-6 text-center text-gray-400"
-                    >
+                    <td colSpan={5} className="px-5 py-8 text-center text-sm text-gray-400">
                       No order history found.
                     </td>
                   </tr>
@@ -238,8 +229,9 @@ export default function CustomerDetailPage() {
               </tbody>
             </table>
           </div>
-        </div>
+        </Section>
+
       </div>
     </main>
-  );
+  )
 }

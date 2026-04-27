@@ -1,4 +1,5 @@
 import prisma from "../lib/prisma"
+import type { CreateItemPayload } from "../types/CreateItemPayload"
 
 /**
  * Get all inventory items with category names
@@ -10,11 +11,15 @@ export async function getItems() {
   })
 
   return items.map((item) => ({
-    id: item.id,
+   id: item.id,
     name: item.name,
+    stockType: item.stockType,
     quantity: item.quantity,
     minimumStock: item.minimumStock,
     unit: item.unit,
+    defaultLengthMm: item.defaultLengthMm,
+    totalLengthMm: item.totalLengthMm,
+    minimumLengthMm: item.minimumLengthMm,
     category: item.category.name,
   }))
 }
@@ -50,7 +55,7 @@ export async function updateItemStock(
     throw error
   }
 
-  const previousQuantity = existingItem.quantity
+  const previousQuantity = existingItem.quantity ?? 0
   const difference = quantity - previousQuantity
 
   let transactionType = "adjustment"
@@ -154,17 +159,8 @@ export async function updateItemName(itemId: number, name: string) {
 /**
  * Create a new inventory item
  */
-export async function createItem(input: {
-  name: string
-  categoryId: number
-  quantity: number
-  minimumStock: number
-  unit: string
-}) {
-  const { name, categoryId, quantity, minimumStock, unit } = input
-
-  const trimmedName = typeof name === "string" ? name.trim() : ""
-  const trimmedUnit = typeof unit === "string" ? unit.trim() : ""
+export async function createItem(input: CreateItemPayload) {
+  const trimmedName = typeof input.name === "string" ? input.name.trim() : ""
 
   if (!trimmedName) {
     const error = new Error("Item name is required")
@@ -172,32 +168,14 @@ export async function createItem(input: {
     throw error
   }
 
-  if (!Number.isInteger(categoryId)) {
+  if (!Number.isInteger(input.categoryId)) {
     const error = new Error("Valid category is required")
     ;(error as Error & { status?: number }).status = 400
     throw error
   }
 
-  if (typeof quantity !== "number" || quantity < 0) {
-    const error = new Error("Quantity must be a non-negative number")
-    ;(error as Error & { status?: number }).status = 400
-    throw error
-  }
-
-  if (typeof minimumStock !== "number" || minimumStock < 0) {
-    const error = new Error("Minimum stock must be a non-negative number")
-    ;(error as Error & { status?: number }).status = 400
-    throw error
-  }
-
-  if (!trimmedUnit) {
-    const error = new Error("Unit is required")
-    ;(error as Error & { status?: number }).status = 400
-    throw error
-  }
-
   const category = await prisma.category.findUnique({
-    where: { id: categoryId },
+    where: { id: input.categoryId },
   })
 
   if (!category) {
@@ -209,7 +187,7 @@ export async function createItem(input: {
   const existingItem = await prisma.item.findFirst({
     where: {
       name: trimmedName,
-      categoryId,
+      categoryId: input.categoryId,
     },
   })
 
@@ -219,27 +197,115 @@ export async function createItem(input: {
     throw error
   }
 
+  if (input.stockType === "COUNT") {
+    const trimmedUnit = typeof input.unit === "string" ? input.unit.trim() : ""
+
+    if (typeof input.quantity !== "number" || input.quantity < 0) {
+      const error = new Error("Quantity must be a non-negative number")
+      ;(error as Error & { status?: number }).status = 400
+      throw error
+    }
+
+    if (typeof input.minimumStock !== "number" || input.minimumStock < 0) {
+      const error = new Error("Minimum stock must be a non-negative number")
+      ;(error as Error & { status?: number }).status = 400
+      throw error
+    }
+
+    if (!trimmedUnit) {
+      const error = new Error("Unit is required")
+      ;(error as Error & { status?: number }).status = 400
+      throw error
+    }
+
+    const createdItem = await prisma.item.create({
+      data: {
+        name: trimmedName,
+        categoryId: input.categoryId,
+        stockType: "COUNT",
+        quantity: input.quantity,
+        minimumStock: input.minimumStock,
+        unit: trimmedUnit,
+        defaultLengthMm: null,
+        totalLengthMm: null,
+        minimumLengthMm: null,
+      },
+      include: {
+        category: true,
+      },
+    })
+
+    if (input.quantity > 0) {
+      await prisma.transaction.create({
+        data: {
+          itemId: createdItem.id,
+          type: "in",
+          quantity: input.quantity,
+          lengthMm: null,
+          source: "initial_stock",
+          note: `Initial stock for new item: ${trimmedName}`,
+        },
+      })
+    }
+
+    return {
+      id: createdItem.id,
+      name: createdItem.name,
+      stockType: createdItem.stockType,
+      quantity: createdItem.quantity,
+      minimumStock: createdItem.minimumStock,
+      unit: createdItem.unit,
+      defaultLengthMm: createdItem.defaultLengthMm,
+      totalLengthMm: createdItem.totalLengthMm,
+      minimumLengthMm: createdItem.minimumLengthMm,
+      category: createdItem.category.name,
+    }
+  }
+
+  if (typeof input.defaultLengthMm !== "number" || input.defaultLengthMm <= 0) {
+    const error = new Error("Default length must be greater than 0")
+    ;(error as Error & { status?: number }).status = 400
+    throw error
+  }
+
+  if (typeof input.totalLengthMm !== "number" || input.totalLengthMm < 0) {
+    const error = new Error("Total length must be a non-negative number")
+    ;(error as Error & { status?: number }).status = 400
+    throw error
+  }
+
+  if (typeof input.minimumLengthMm !== "number" || input.minimumLengthMm < 0) {
+    const error = new Error("Minimum length must be a non-negative number")
+    ;(error as Error & { status?: number }).status = 400
+    throw error
+  }
+
   const createdItem = await prisma.item.create({
     data: {
       name: trimmedName,
-      categoryId,
-      quantity,
-      minimumStock,
-      unit: trimmedUnit,
+      categoryId: input.categoryId,
+      stockType: "LENGTH",
+      quantity: null,
+      minimumStock: null,
+      unit: "mm",
+      defaultLengthMm: input.defaultLengthMm,
+      totalLengthMm: input.totalLengthMm,
+      minimumLengthMm: input.minimumLengthMm,
     },
     include: {
       category: true,
     },
   })
 
-  if (quantity > 0) {
+  if (input.totalLengthMm > 0) {
     await prisma.transaction.create({
       data: {
         itemId: createdItem.id,
         type: "in",
-        quantity,
+        quantity: null,
+        lengthMm: input.totalLengthMm,
         source: "initial_stock",
-        note: `Initial stock for new item: ${trimmedName}`,
+        note: `Initial length stock for new item: ${trimmedName}`,
       },
     })
   }
@@ -247,13 +313,16 @@ export async function createItem(input: {
   return {
     id: createdItem.id,
     name: createdItem.name,
+    stockType: createdItem.stockType,
     quantity: createdItem.quantity,
     minimumStock: createdItem.minimumStock,
     unit: createdItem.unit,
+    defaultLengthMm: createdItem.defaultLengthMm,
+    totalLengthMm: createdItem.totalLengthMm,
+    minimumLengthMm: createdItem.minimumLengthMm,
     category: createdItem.category.name,
   }
 }
-
 /**
  * Delete one item
  */

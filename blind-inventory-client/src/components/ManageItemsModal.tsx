@@ -1,27 +1,21 @@
-import { useEffect,useMemo, useState } from "react"
+import { useEffect, useMemo, useState } from "react"
 import type { InventoryItem } from "../types/inventory"
 import type { Category } from "../types/category"
+import type { CreateItemPayload } from "../types/createItemPayload"
 
 type ManageItemsModalProps = {
   isOpen: boolean
   items: InventoryItem[]
   categories: Category[]
   onClose: () => void
-  onCreateItem: (payload: {
-    name: string
-    categoryId: number
-    quantity: number
-    minimumStock: number
-    unit: string
-  }) => Promise<void>
+  onCreateItem: (payload: CreateItemPayload) => Promise<void>
   onCreateCategory: (name: string) => Promise<void>
   onUpdateItemName: (itemId: number, name: string) => Promise<void>
   onDeleteItem: (itemId: number) => Promise<void>
   onOpenEditCategories: () => void
 }
 
-
-
+type StockTypeTab = "COUNT" | "LENGTH"
 
 export default function ManageItemsModal({
   isOpen,
@@ -33,22 +27,21 @@ export default function ManageItemsModal({
   onUpdateItemName,
   onDeleteItem,
   onOpenEditCategories,
-  
 }: ManageItemsModalProps) {
   const [selectedCategoryId, setSelectedCategoryId] = useState<number>(
     categories[0]?.id ?? 0
   )
-  
-  useEffect(() => {
-    if (isOpen && categories.length > 0) {
-      setSelectedCategoryId(categories[0].id)
-    }
-  }, [isOpen, categories])
+
+  const [stockTypeTab, setStockTypeTab] = useState<StockTypeTab>("COUNT")
 
   const [name, setName] = useState("")
   const [quantity, setQuantity] = useState("0")
   const [minimumStock, setMinimumStock] = useState("0")
   const [unit, setUnit] = useState("pcs")
+
+  const [defaultLengthMm, setDefaultLengthMm] = useState("4000")
+  const [stickCount, setStickCount] = useState("0")
+  const [minimumLengthMm, setMinimumLengthMm] = useState("0")
 
   const [newCategoryName, setNewCategoryName] = useState("")
   const [editingItemId, setEditingItemId] = useState<number | null>(null)
@@ -59,17 +52,46 @@ export default function ManageItemsModal({
   const [error, setError] = useState("")
   const [categoryError, setCategoryError] = useState("")
 
+  useEffect(() => {
+    if (isOpen && categories.length > 0) {
+      setSelectedCategoryId(categories[0].id)
+    }
+  }, [isOpen, categories])
+
   const sortedItems = useMemo(() => {
     return [...items].sort((a, b) => a.name.localeCompare(b.name))
   }, [items])
+
+  const totalLengthMm = useMemo(() => {
+    const parsedDefaultLengthMm = Number(defaultLengthMm)
+    const parsedStickCount = Number(stickCount)
+
+    if (!Number.isFinite(parsedDefaultLengthMm) || parsedDefaultLengthMm <= 0) {
+      return 0
+    }
+
+    if (!Number.isFinite(parsedStickCount) || parsedStickCount < 0) {
+      return 0
+    }
+
+    return parsedDefaultLengthMm * parsedStickCount
+  }, [defaultLengthMm, stickCount])
+
+  function resetItemForm() {
+    setName("")
+    setQuantity("0")
+    setMinimumStock("0")
+    setUnit("pcs")
+    setDefaultLengthMm("4000")
+    setStickCount("0")
+    setMinimumLengthMm("0")
+    setStockTypeTab("COUNT")
+  }
 
   if (!isOpen) return null
 
   async function handleCreateItemSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
-
-    const parsedQuantity = Number(quantity)
-    const parsedMinimumStock = Number(minimumStock)
 
     if (!name.trim()) {
       setError("Item name is required.")
@@ -81,37 +103,74 @@ export default function ManageItemsModal({
       return
     }
 
-    if (!Number.isFinite(parsedQuantity) || parsedQuantity < 0) {
-      setError("Initial quantity must be a non-negative number.")
-      return
-    }
-
-    if (!Number.isFinite(parsedMinimumStock) || parsedMinimumStock < 0) {
-      setError("Minimum stock must be a non-negative number.")
-      return
-    }
-
-    if (!unit.trim()) {
-      setError("Unit is required.")
-      return
-    }
-
     try {
       setSubmitting(true)
       setError("")
 
-      await onCreateItem({
-        name: name.trim(),
-        categoryId: selectedCategoryId,
-        quantity: parsedQuantity,
-        minimumStock: parsedMinimumStock,
-        unit: unit.trim(),
-      })
+      if (stockTypeTab === "COUNT") {
+        const parsedQuantity = Number(quantity)
+        const parsedMinimumStock = Number(minimumStock)
 
-      setName("")
-      setQuantity("0")
-      setMinimumStock("0")
-      setUnit("pcs")
+        if (!Number.isFinite(parsedQuantity) || parsedQuantity < 0) {
+          setError("Initial quantity must be a non-negative number.")
+          return
+        }
+
+        if (!Number.isFinite(parsedMinimumStock) || parsedMinimumStock < 0) {
+          setError("Minimum stock must be a non-negative number.")
+          return
+        }
+
+        if (!unit.trim()) {
+          setError("Unit is required.")
+          return
+        }
+
+        await onCreateItem({
+          name: name.trim(),
+          categoryId: selectedCategoryId,
+          stockType: "COUNT",
+          quantity: parsedQuantity,
+          minimumStock: parsedMinimumStock,
+          unit: unit.trim(),
+        })
+      } else {
+        const parsedDefaultLengthMm = Number(defaultLengthMm)
+        const parsedStickCount = Number(stickCount)
+        const parsedMinimumLengthMm = Number(minimumLengthMm)
+
+        if (
+          !Number.isFinite(parsedDefaultLengthMm) ||
+          parsedDefaultLengthMm <= 0
+        ) {
+          setError("Default stick length must be greater than 0.")
+          return
+        }
+
+        if (!Number.isFinite(parsedStickCount) || parsedStickCount < 0) {
+          setError("Stick count must be a non-negative number.")
+          return
+        }
+
+        if (
+          !Number.isFinite(parsedMinimumLengthMm) ||
+          parsedMinimumLengthMm < 0
+        ) {
+          setError("Minimum length must be a non-negative number.")
+          return
+        }
+
+        await onCreateItem({
+          name: name.trim(),
+          categoryId: selectedCategoryId,
+          stockType: "LENGTH",
+          defaultLengthMm: parsedDefaultLengthMm,
+          totalLengthMm,
+          minimumLengthMm: parsedMinimumLengthMm,
+        })
+      }
+
+      resetItemForm()
     } catch (err) {
       console.error(err)
       setError("Failed to create item.")
@@ -167,6 +226,34 @@ export default function ManageItemsModal({
     }
   }
 
+  function renderCurrentStock(item: InventoryItem) {
+    if (item.stockType === "LENGTH") {
+      return item.totalLengthMm != null
+        ? `${item.totalLengthMm.toLocaleString()} mm`
+        : "-"
+    }
+
+    return item.quantity != null ? `${item.quantity}` : "-"
+  }
+
+  function renderMinimumStock(item: InventoryItem) {
+    if (item.stockType === "LENGTH") {
+      return item.minimumLengthMm != null
+        ? `${item.minimumLengthMm.toLocaleString()} mm`
+        : "-"
+    }
+
+    return item.minimumStock != null ? `${item.minimumStock}` : "-"
+  }
+
+  function renderUnit(item: InventoryItem) {
+    if (item.stockType === "LENGTH") {
+      return "mm"
+    }
+
+    return item.unit ?? "-"
+  }
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 px-4">
       <div className="flex max-h-[90vh] w-full max-w-7xl flex-col overflow-hidden rounded-2xl bg-white shadow-xl">
@@ -194,6 +281,7 @@ export default function ManageItemsModal({
                   <tr className="text-left text-sm text-gray-500">
                     <th className="px-4 py-2 font-medium">Item Name</th>
                     <th className="px-4 py-2 font-medium">Category</th>
+                    <th className="px-4 py-2 font-medium">Type</th>
                     <th className="px-4 py-2 font-medium">Current Stock</th>
                     <th className="px-4 py-2 font-medium">Minimum Stock</th>
                     <th className="px-4 py-2 font-medium">Unit</th>
@@ -220,9 +308,12 @@ export default function ManageItemsModal({
                         )}
                       </td>
                       <td className="px-4 py-3">{item.category}</td>
-                      <td className="px-4 py-3">{item.quantity}</td>
-                      <td className="px-4 py-3">{item.minimumStock}</td>
-                      <td className="px-4 py-3">{item.unit}</td>
+                      <td className="px-4 py-3">
+                        {item.stockType === "LENGTH" ? "Length" : "Count"}
+                      </td>
+                      <td className="px-4 py-3">{renderCurrentStock(item)}</td>
+                      <td className="px-4 py-3">{renderMinimumStock(item)}</td>
+                      <td className="px-4 py-3">{renderUnit(item)}</td>
                       <td className="rounded-r-xl px-4 py-3">
                         <div className="flex gap-2">
                           {editingItemId === item.id ? (
@@ -298,18 +389,18 @@ export default function ManageItemsModal({
                 <button
                   onClick={handleCreateCategory}
                   disabled={categorySubmitting}
-                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm  font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                  className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
                 >
                   {categorySubmitting ? "Adding..." : "Add Category"}
                 </button>
-                <button
-                    type="button"
-                    onClick={onOpenEditCategories}
-                    className="rounded-lg border border-gray-300 px-4 py-2 ml-1 text-sm font-medium text-gray-700 hover:bg-gray-50"
-                  >
-                    Edit Categories
-                  </button>
 
+                <button
+                  type="button"
+                  onClick={onOpenEditCategories}
+                  className="ml-1 rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                >
+                  Edit Categories
+                </button>
               </div>
             </div>
 
@@ -323,22 +414,48 @@ export default function ManageItemsModal({
                 </p>
               </div>
 
+              <div className="mb-4 flex w-fit rounded-xl bg-gray-100 p-1">
+                <button
+                  type="button"
+                  onClick={() => setStockTypeTab("COUNT")}
+                  className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                    stockTypeTab === "COUNT"
+                      ? "bg-white text-gray-900 shadow"
+                      : "text-gray-500 hover:text-gray-800"
+                  }`}
+                >
+                  개수형 재고
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setStockTypeTab("LENGTH")}
+                  className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                    stockTypeTab === "LENGTH"
+                      ? "bg-white text-gray-900 shadow"
+                      : "text-gray-500 hover:text-gray-800"
+                  }`}
+                >
+                  길이형 재고
+                </button>
+              </div>
+
               <form onSubmit={handleCreateItemSubmit} className="space-y-4">
                 <div>
                   <label className="mb-2 block text-sm font-medium text-gray-700">
                     Category
                   </label>
                   <select
-                  value={selectedCategoryId}
-                  onChange={(e) => setSelectedCategoryId(Number(e.target.value))}
-                  className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                    value={selectedCategoryId}
+                    onChange={(e) => setSelectedCategoryId(Number(e.target.value))}
+                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
                   >
-                  {categories.map((category) => (
-                    <option key={category.id} value={category.id}>
-                      {category.name}
-                    </option>
-                  ))}
-                </select>
+                    {categories.map((category) => (
+                      <option key={category.id} value={category.id}>
+                        {category.name}
+                      </option>
+                    ))}
+                  </select>
                 </div>
 
                 <div>
@@ -349,51 +466,113 @@ export default function ManageItemsModal({
                     type="text"
                     value={name}
                     onChange={(e) => setName(e.target.value)}
-                    placeholder="e.g. Black Winder"
+                    placeholder={
+                      stockTypeTab === "COUNT"
+                        ? "e.g. Black Winder"
+                        : "e.g. 38MM TUBE"
+                    }
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
                   />
                 </div>
 
-                <div>
-                  <label className="mb-2 block text-sm font-medium text-gray-700">
-                    Unit
-                  </label>
-                  <input
-                    type="text"
-                    value={unit}
-                    onChange={(e) => setUnit(e.target.value)}
-                    placeholder="e.g. pcs"
-                    className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
-                  />
-                </div>
+                {stockTypeTab === "COUNT" ? (
+                  <>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-700">
+                        Unit
+                      </label>
+                      <input
+                        type="text"
+                        value={unit}
+                        onChange={(e) => setUnit(e.target.value)}
+                        placeholder="e.g. pcs"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                      />
+                    </div>
 
-                <div className="grid gap-4 sm:grid-cols-2">
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-700">
-                      Initial Quantity
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={quantity}
-                      onChange={(e) => setQuantity(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
-                    />
-                  </div>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700">
+                          Initial Quantity
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={quantity}
+                          onChange={(e) => setQuantity(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                        />
+                      </div>
 
-                  <div>
-                    <label className="mb-2 block text-sm font-medium text-gray-700">
-                      Minimum Stock
-                    </label>
-                    <input
-                      type="number"
-                      min="0"
-                      value={minimumStock}
-                      onChange={(e) => setMinimumStock(e.target.value)}
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
-                    />
-                  </div>
-                </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700">
+                          Minimum Stock
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={minimumStock}
+                          onChange={(e) => setMinimumStock(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700">
+                          Default Length (mm)
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={defaultLengthMm}
+                          onChange={(e) => setDefaultLengthMm(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700">
+                          Stick Count
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={stickCount}
+                          onChange={(e) => setStickCount(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700">
+                          Minimum Length (mm)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          value={minimumLengthMm}
+                          onChange={(e) => setMinimumLengthMm(e.target.value)}
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700">
+                          Total Available Length
+                        </label>
+                        <div className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900">
+                          {totalLengthMm.toLocaleString()} mm
+                        </div>
+                      </div>
+                    </div>
+                  </>
+                )}
 
                 {error && <p className="text-sm text-red-600">{error}</p>}
 

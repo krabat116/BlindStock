@@ -6,6 +6,11 @@ datasource db {
   provider = "sqlite"
 }
 
+enum StockType {
+  COUNT
+  LENGTH
+}
+
 model Category {
   id        Int      @id @default(autoincrement())
   name      String   @unique
@@ -15,51 +20,60 @@ model Category {
 }
 
 model Item {
-  id           Int           @id @default(autoincrement())
-  name         String
-  quantity     Int
-  minimumStock Int
-  unit         String
-  categoryId   Int
-  category     Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
-  transactions Transaction[]
-  createdAt    DateTime      @default(now())
-  updatedAt    DateTime      @updatedAt
+  id               Int           @id @default(autoincrement())
+  name             String
+
+  stockType        StockType     @default(COUNT)
+
+  // COUNT type
+  quantity         Int?
+  minimumStock     Int?
+  unit             String?
+
+  // LENGTH type
+  defaultLengthMm  Int?
+  totalLengthMm    Int?
+  minimumLengthMm  Int?
+
+  categoryId       Int
+  category         Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
+  transactions     Transaction[]
+  createdAt        DateTime      @default(now())
+  updatedAt        DateTime      @updatedAt
 
   @@unique([name, categoryId])
 }
 
 model Transaction {
-  id        Int      @id @default(autoincrement())
-  itemId    Int
-  item      Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
-  type      String
-  quantity  Int
-  source    String?
-  note      String?
-  createdAt DateTime @default(now())
+  id             Int      @id @default(autoincrement())
+  itemId         Int
+  item           Item     @relation(fields: [itemId], references: [id], onDelete: Cascade)
+  type           String
+
+  // COUNT transaction
+  quantity       Int?
+
+  // LENGTH transaction
+  lengthMm       Int?
+
+  source         String?
+  note           String?
+  createdAt      DateTime @default(now())
 }
 
 // Customer page related
 
 model Customer {
   id          String   @id @default(cuid())
-
-  // Main customer identifier from Excel ACCOUNT field
   accountName String   @unique
-
-  // Optional display name that can be added later manually
   name        String?
-
   phone       String?
   email       String?
   companyName String?
   address     String?
   note        String?
-
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
-
   orders      CustomerOrder[]
 
   @@index([accountName])
@@ -72,22 +86,16 @@ model Customer {
 model CustomerOrder {
   id           String      @id @default(cuid())
   customerId   String
-
   orderYear    Int
   orderMonth   Int
   orderSheetNo Int
-
   totalItems   Int         @default(0)
-
   fileName     String?
   fileHash     String?
-
   status       OrderStatus @default(PENDING)
   note         String?
-
   createdAt    DateTime    @default(now())
   updatedAt    DateTime    @updatedAt
-
   customer     Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
   items        OrderItem[]
 
