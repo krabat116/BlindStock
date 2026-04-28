@@ -3,9 +3,11 @@ import {
   getItems,
   updateItemStock,
   updateItemName,
+  updateItemSettings,
   createItem,
   deleteItem,
 } from "../services/itemService"
+import { requireAdmin } from "../middleware/authMiddleware"
 
 const router = express.Router()
 
@@ -25,14 +27,16 @@ router.get("/", async (_req, res) => {
 
 /**
  * PATCH /items/:id/stock
- * Update stock quantity for one item
+ * Update stock for one item
+ * COUNT 타입: { quantity, note }
+ * LENGTH 타입: { totalLengthMm, note }
  */
 router.patch("/:id/stock", async (req, res) => {
   try {
     const itemId = Number(req.params.id)
-    const { quantity, note } = req.body
+    const { quantity, totalLengthMm, note } = req.body
 
-    const updatedItem = await updateItemStock(itemId, quantity, note)
+    const updatedItem = await updateItemStock(itemId, { quantity, totalLengthMm, note })
     res.json(updatedItem)
   } catch (error) {
     console.error("Failed to update stock:", error)
@@ -50,10 +54,34 @@ router.patch("/:id/stock", async (req, res) => {
 })
 
 /**
+ * PATCH /items/:id/settings
+ * 아이템 stockType 및 관련 설정 업데이트 (COUNT ↔ LENGTH 전환 포함)
+ */
+router.patch("/:id/settings", requireAdmin, async (req, res) => {
+  try {
+    const itemId = Number(req.params.id)
+    const updatedItem = await updateItemSettings(itemId, req.body)
+    res.json(updatedItem)
+  } catch (error) {
+    console.error("Failed to update item settings:", error)
+
+    const status =
+      error instanceof Error && "status" in error && typeof error.status === "number"
+        ? error.status
+        : 500
+
+    const message =
+      error instanceof Error ? error.message : "Failed to update item settings"
+
+    res.status(status).json({ message })
+  }
+})
+
+/**
  * PATCH /items/:id
  * Update item name
  */
-router.patch("/:id", async (req, res) => {
+router.patch("/:id", requireAdmin, async (req, res) => {
   try {
     const itemId = Number(req.params.id)
     const { name } = req.body
@@ -79,7 +107,7 @@ router.patch("/:id", async (req, res) => {
  * POST /items
  * Create a new item
  */
-router.post("/", async (req, res) => {
+router.post("/", requireAdmin, async (req, res) => {
   try {
     const createdItem = await createItem(req.body)
     res.status(201).json(createdItem)
@@ -102,7 +130,7 @@ router.post("/", async (req, res) => {
  * DELETE /items/:id
  * Delete one item
  */
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireAdmin, async (req, res) => {
   try {
     const itemId = Number(req.params.id)
 

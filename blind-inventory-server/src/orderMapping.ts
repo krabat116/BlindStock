@@ -24,6 +24,7 @@ export type PreviewComponent = {
   category: "Finish" | "Winder" | "Pin" | "Chain" | "Tube"
   itemName: string
   quantity: number
+  lengthMm?: number // LENGTH 타입 부품(튜브 등)의 차감할 총 길이(mm)
 }
 
 export function isSwivelOperation(operationRaw: string) {
@@ -154,6 +155,8 @@ export function mapOrderRowToComponents(row: ParsedOrderRow): PreviewComponent[]
         category: "Tube",
         itemName: tubeName,
         quantity: qty,
+        // 튜브는 LENGTH 타입: 블라인드 가로 너비(mm) × 수량 = 차감할 길이
+        lengthMm: row.width * qty,
       })
     }
   }

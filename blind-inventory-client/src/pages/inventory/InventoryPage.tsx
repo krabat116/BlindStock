@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react"
+import { useAuth } from "../../contexts/AuthContext"
 import InventoryTable from "../../components/InventoryTable"
 import AddStockModal from "../../components/AddStockModal"
 import TransactionList from "../../components/TransactionList"
@@ -10,6 +11,7 @@ import EditCategoriesModal from "../../components/EditCategoriesModal"
 import OrderUploadPanel from "../../components/OrderUploadPanel"
 import type { OrderPreviewItem, OrderPreviewResponse } from "../../types/orderPreview"
 import type { CreateItemPayload } from "../../types/createItemPayload"
+import { apiFetch } from "../../lib/api"
 
 // ─────────────────────────────────────────────
 // Stat card
@@ -62,6 +64,8 @@ function Section({
 // Main page
 // ─────────────────────────────────────────────
 export default function InventoryPage() {
+  const { user } = useAuth()
+  const isAdmin = user?.role === "ADMIN"
 
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [orderYear, setOrderYear] = useState("")
@@ -85,27 +89,30 @@ export default function InventoryPage() {
   const [orderTotalItems, setOrderTotalItems] = useState(0)
 
   // ── Derived stats ──────────────────────────
-  const lowStockCount = items.filter(
-    (item) => item.quantity <= item.minimumStock
-  ).length
+  const lowStockCount = items.filter((item) => {
+    if (item.stockType === "LENGTH") {
+      return (item.totalLengthMm ?? 0) <= (item.minimumLengthMm ?? 0)
+    }
+    return item.quantity <= item.minimumStock
+  }).length
 
   // ── Fetch helpers ──────────────────────────
   async function fetchItems() {
-    const response = await fetch("http://localhost:3001/items")
+    const response = await apiFetch("/items")
     if (!response.ok) throw new Error("Failed to fetch inventory items")
     const data: InventoryItem[] = await response.json()
     setItems(data)
   }
 
   async function fetchTransactions() {
-    const response = await fetch("http://localhost:3001/transactions")
+    const response = await apiFetch("/transactions")
     if (!response.ok) throw new Error("Failed to fetch transactions")
     const data: InventoryTransaction[] = await response.json()
     setTransactions(data)
   }
 
   async function fetchCategories() {
-    const response = await fetch("http://localhost:3001/categories")
+    const response = await apiFetch("/categories")
     if (!response.ok) throw new Error("Failed to fetch categories")
     const data: Category[] = await response.json()
     setCategories(data)
@@ -143,7 +150,7 @@ export default function InventoryPage() {
       formData.append("year", orderYear)
       formData.append("month", orderMonth)
 
-      const response = await fetch("http://localhost:3001/orders/preview", {
+      const response = await apiFetch("/orders/preview", {
         method: "POST",
         body: formData,
       })
@@ -185,13 +192,14 @@ export default function InventoryPage() {
             itemName: item.itemName,
             category: item.category,
             quantity: item.quantity,
+            // LENGTH 타입 아이템의 경우 차감할 길이(mm)를 함께 전송
+            ...(item.lengthMm !== null ? { lengthMm: item.lengthMm } : {}),
             sourceRows: item.sourceRows,
           })),
       }
 
-      const response = await fetch("http://localhost:3001/orders/confirm-deduction", {
+      const response = await apiFetch("/orders/confirm-deduction", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify(payload),
       })
 
@@ -236,20 +244,48 @@ export default function InventoryPage() {
     setSelectedItem(null)
   }
 
-  async function handleSaveStock(itemId: number, quantity: number, note: string) {
-    const response = await fetch(`http://localhost:3001/items/${itemId}/stock`, {
+  async function handleSaveStock(itemId: number, value: number, note: string) {
+    const item = items.find((i) => i.id === itemId)
+    // LENGTH 타입이면 totalLengthMm으로, COUNT 타입이면 quantity로 전송
+    const body =
+      item?.stockType === "LENGTH"
+        ? { totalLengthMm: value, note }
+        : { quantity: value, note }
+
+    const response = await apiFetch(`/items/${itemId}/stock`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ quantity, note }),
+      body: JSON.stringify(body),
     })
     if (!response.ok) throw new Error("Failed to update stock")
     await fetchAllData()
   }
 
+  async function handleUpdateItemSettings(
+    itemId: number,
+    payload: {
+      stockType: "COUNT" | "LENGTH"
+      minimumStock?: number
+      unit?: string
+      defaultLengthMm?: number
+      totalLengthMm?: number
+      minimumLengthMm?: number
+      cutoffLengthMm?: number
+    }
+  ) {
+    const response = await apiFetch(`/items/${itemId}/settings`, {
+      method: "PATCH",
+      body: JSON.stringify(payload),
+    })
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null)
+      throw new Error(errorData?.message || "Failed to update item settings")
+    }
+    await fetchAllData()
+  }
+
   async function handleCreateItem(payload: CreateItemPayload) {
-    const response = await fetch("http://localhost:3001/items", {
+    const response = await apiFetch("/items", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     })
     if (!response.ok) {
@@ -260,9 +296,8 @@ export default function InventoryPage() {
   }
 
   async function handleCreateCategory(name: string) {
-    const response = await fetch("http://localhost:3001/categories", {
+    const response = await apiFetch("/categories", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     })
     if (!response.ok) throw new Error("Failed to create category")
@@ -270,9 +305,8 @@ export default function InventoryPage() {
   }
 
   async function handleUpdateItemName(itemId: number, name: string) {
-    const response = await fetch(`http://localhost:3001/items/${itemId}`, {
+    const response = await apiFetch(`/items/${itemId}`, {
       method: "PATCH",
-      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ name }),
     })
     if (!response.ok) throw new Error("Failed to update item")
@@ -280,17 +314,13 @@ export default function InventoryPage() {
   }
 
   async function handleDeleteItem(itemId: number) {
-    const response = await fetch(`http://localhost:3001/items/${itemId}`, {
-      method: "DELETE",
-    })
+    const response = await apiFetch(`/items/${itemId}`, { method: "DELETE" })
     if (!response.ok) throw new Error("Failed to delete item")
     await fetchAllData()
   }
 
   async function handleDeleteCategory(categoryId: number) {
-    const response = await fetch(`http://localhost:3001/categories/${categoryId}`, {
-      method: "DELETE",
-    })
+    const response = await apiFetch(`/categories/${categoryId}`, { method: "DELETE" })
     if (!response.ok) throw new Error("Failed to delete category")
     await fetchAllData()
   }
@@ -336,18 +366,22 @@ export default function InventoryPage() {
               title="Stock inventory"
               actions={
                 <>
-                  <button
-                    onClick={() => setIsManageItemsModalOpen(true)}
-                    className="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-50"
-                  >
-                    Manage items
-                  </button>
-                  <button
-                    onClick={() => setIsEditCategoriesModalOpen(true)}
-                    className="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-50"
-                  >
-                    Edit categories
-                  </button>
+                  {isAdmin && (
+                    <>
+                      <button
+                        onClick={() => setIsManageItemsModalOpen(true)}
+                        className="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-50"
+                      >
+                        Manage items
+                      </button>
+                      <button
+                        onClick={() => setIsEditCategoriesModalOpen(true)}
+                        className="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-600 transition-colors hover:bg-gray-50"
+                      >
+                        Edit categories
+                      </button>
+                    </>
+                  )}
                 </>
               }
             >
@@ -403,6 +437,7 @@ export default function InventoryPage() {
         onCreateItem={handleCreateItem}
         onCreateCategory={handleCreateCategory}
         onUpdateItemName={handleUpdateItemName}
+        onUpdateItemSettings={handleUpdateItemSettings}
         onDeleteItem={handleDeleteItem}
         onOpenEditCategories={() => setIsEditCategoriesModalOpen(true)}
       />

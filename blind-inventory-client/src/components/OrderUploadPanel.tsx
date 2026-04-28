@@ -18,9 +18,20 @@ type OrderUploadPanelProps = {
 
 function getPreviewStatus(item: OrderPreviewItem) {
   if (!item.matched) return "missing"
+
+  if (item.stockType === "LENGTH") {
+    if (item.currentLengthMm === null || item.lengthMm === null) return "missing"
+    if (item.currentLengthMm < item.lengthMm) return "insufficient"
+    return "ok"
+  }
+
   if (item.currentStock === null) return "missing"
   if (item.currentStock < item.quantity) return "insufficient"
   return "ok"
+}
+
+function formatMm(mm: number) {
+  return `${mm.toLocaleString()} mm`
 }
 
 const yearOptions = ["2020", "2021", "2022", "2023", "2024", "2025", "2026", "2027"]
@@ -56,12 +67,17 @@ export default function OrderUploadPanel({
   onClearPreview,
 }: OrderUploadPanelProps) {
   const hasMissingItems = preview.some((item) => !item.matched)
-  const hasInsufficientStock = preview.some(
-    (item) =>
-      item.matched &&
-      item.currentStock !== null &&
-      item.currentStock < item.quantity
-  )
+  const hasInsufficientStock = preview.some((item) => {
+    if (!item.matched) return false
+    if (item.stockType === "LENGTH") {
+      return (
+        item.currentLengthMm !== null &&
+        item.lengthMm !== null &&
+        item.currentLengthMm < item.lengthMm
+      )
+    }
+    return item.currentStock !== null && item.currentStock < item.quantity
+  })
 
   const canPreview = Boolean(file && year && month) && !loading
   const canConfirm =
@@ -166,10 +182,29 @@ export default function OrderUploadPanel({
               <tbody className="divide-y divide-gray-100">
                 {preview.map((item, index) => {
                   const status = getPreviewStatus(item)
-                  const remaining =
-                    item.currentStock !== null
+                  const isLength = item.stockType === "LENGTH"
+
+                  const requiredDisplay = isLength
+                    ? item.lengthMm !== null ? formatMm(item.lengthMm) : "—"
+                    : String(item.quantity)
+
+                  const inStockDisplay = isLength
+                    ? item.currentLengthMm !== null ? formatMm(item.currentLengthMm) : "—"
+                    : item.currentStock !== null ? String(item.currentStock) : "—"
+
+                  const remainingValue = isLength
+                    ? (item.currentLengthMm !== null && item.lengthMm !== null)
+                      ? item.currentLengthMm - item.lengthMm
+                      : null
+                    : item.currentStock !== null
                       ? item.currentStock - item.quantity
                       : null
+
+                  const remainingDisplay = remainingValue === null
+                    ? "—"
+                    : isLength
+                      ? formatMm(remainingValue)
+                      : String(remainingValue)
 
                   return (
                     <tr
@@ -179,16 +214,19 @@ export default function OrderUploadPanel({
                       <td className="px-4 py-3 text-gray-500">{item.category}</td>
                       <td className="px-4 py-3 font-medium text-gray-900">
                         {item.itemName}
+                        {isLength && (
+                          <span className="ml-1.5 text-xs text-blue-500 font-normal">길이</span>
+                        )}
                       </td>
-                      <td className="px-4 py-3">{item.quantity}</td>
-                      <td className="px-4 py-3">{item.currentStock ?? "—"}</td>
+                      <td className="px-4 py-3">{requiredDisplay}</td>
+                      <td className="px-4 py-3">{inStockDisplay}</td>
                       <td className="px-4 py-3">
-                        {remaining === null ? (
+                        {remainingValue === null ? (
                           "—"
-                        ) : remaining < 0 ? (
-                          <span className="text-red-600">{remaining}</span>
+                        ) : remainingValue < 0 ? (
+                          <span className="text-red-600">{remainingDisplay}</span>
                         ) : (
-                          remaining
+                          remainingDisplay
                         )}
                       </td>
                       <td className="px-4 py-3">

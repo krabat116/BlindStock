@@ -4,6 +4,7 @@ import {
   createCategory,
   deleteCategory,
 } from "../services/categoryService"
+import { requireAdmin } from "../middleware/authMiddleware"
 
 const router = express.Router()
 
@@ -25,7 +26,7 @@ router.get("/", async (_req, res) => {
  * POST /categories
  * Create a new category
  */
-router.post("/", async (req, res) => {
+router.post("/", requireAdmin, async (req, res) => {
   try {
     const category = await createCategory(req.body.name)
     res.status(201).json(category)
@@ -48,7 +49,7 @@ router.post("/", async (req, res) => {
  * DELETE /categories/:id
  * Delete a category only when it has no items
  */
-router.delete("/:id", async (req, res) => {
+router.delete("/:id", requireAdmin, async (req, res) => {
   try {
     const categoryId = Number(req.params.id)
 

@@ -11,7 +11,7 @@ export async function getItems() {
   })
 
   return items.map((item) => ({
-   id: item.id,
+    id: item.id,
     name: item.name,
     stockType: item.stockType,
     quantity: item.quantity,
@@ -20,26 +20,22 @@ export async function getItems() {
     defaultLengthMm: item.defaultLengthMm,
     totalLengthMm: item.totalLengthMm,
     minimumLengthMm: item.minimumLengthMm,
+    cutoffLengthMm: item.cutoffLengthMm,
     category: item.category.name,
   }))
 }
 
 /**
- * Update stock quantity for one item
+ * Update stock for one item (increment-based)
+ * COUNT 타입: payload.quantity = 추가할 수량 (기존 재고에 합산)
+ * LENGTH 타입: payload.totalLengthMm = 추가할 길이(mm) (기존 총 길이에 합산)
  */
 export async function updateItemStock(
   itemId: number,
-  quantity: number,
-  note?: string
+  payload: { quantity?: number; totalLengthMm?: number; note?: string }
 ) {
   if (!Number.isInteger(itemId)) {
     const error = new Error("Invalid item id")
-    ;(error as Error & { status?: number }).status = 400
-    throw error
-  }
-
-  if (typeof quantity !== "number" || quantity < 0) {
-    const error = new Error("Quantity must be a non-negative number")
     ;(error as Error & { status?: number }).status = 400
     throw error
   }
@@ -55,30 +51,81 @@ export async function updateItemStock(
     throw error
   }
 
+  const note = payload.note
+
+  if (existingItem.stockType === "LENGTH") {
+    const addedLengthMm = payload.totalLengthMm ?? 0
+
+    if (typeof addedLengthMm !== "number" || addedLengthMm < 0) {
+      const error = new Error("Added length must be a non-negative number")
+      ;(error as Error & { status?: number }).status = 400
+      throw error
+    }
+
+    const previousLengthMm = existingItem.totalLengthMm ?? 0
+    const newTotalLengthMm = previousLengthMm + addedLengthMm
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedItem = await tx.item.update({
+        where: { id: itemId },
+        data: { totalLengthMm: newTotalLengthMm },
+        include: { category: true },
+      })
+
+      await tx.transaction.create({
+        data: {
+          itemId,
+          type: "in",
+          lengthMm: addedLengthMm,
+          source: "manual",
+          note: note?.trim() || `Added ${addedLengthMm.toLocaleString()}mm (new total: ${newTotalLengthMm.toLocaleString()}mm)`,
+        },
+      })
+
+      return updatedItem
+    })
+
+    return {
+      id: result.id,
+      name: result.name,
+      stockType: result.stockType,
+      quantity: result.quantity,
+      minimumStock: result.minimumStock,
+      unit: result.unit,
+      defaultLengthMm: result.defaultLengthMm,
+      totalLengthMm: result.totalLengthMm,
+      minimumLengthMm: result.minimumLengthMm,
+      cutoffLengthMm: result.cutoffLengthMm,
+      category: result.category.name,
+    }
+  }
+
+  // COUNT 타입
+  const addedQuantity = payload.quantity ?? 0
+
+  if (typeof addedQuantity !== "number" || addedQuantity < 0) {
+    const error = new Error("Added quantity must be a non-negative number")
+    ;(error as Error & { status?: number }).status = 400
+    throw error
+  }
+
   const previousQuantity = existingItem.quantity ?? 0
-  const difference = quantity - previousQuantity
-
-  let transactionType = "adjustment"
-
-  if (difference > 0) transactionType = "in"
-  if (difference < 0) transactionType = "out"
+  const newQuantity = previousQuantity + addedQuantity
 
   const result = await prisma.$transaction(async (tx) => {
     const updatedItem = await tx.item.update({
       where: { id: itemId },
-      data: { quantity },
+      data: { quantity: newQuantity },
       include: { category: true },
     })
 
     await tx.transaction.create({
       data: {
-        itemId: itemId,
-        type: transactionType,
-        quantity: Math.abs(difference),
+        itemId,
+        type: "in",
+        quantity: addedQuantity,
         source: "manual",
-        note:
-          note?.trim() ||
-          `Stock updated from ${previousQuantity} to ${quantity}`,
+        note: note?.trim() || `Added ${addedQuantity} units (new total: ${newQuantity})`,
       },
     })
 
@@ -88,11 +135,118 @@ export async function updateItemStock(
   return {
     id: result.id,
     name: result.name,
+    stockType: result.stockType,
     quantity: result.quantity,
     minimumStock: result.minimumStock,
     unit: result.unit,
+    defaultLengthMm: result.defaultLengthMm,
+    totalLengthMm: result.totalLengthMm,
+    minimumLengthMm: result.minimumLengthMm,
+    cutoffLengthMm: result.cutoffLengthMm,
     category: result.category.name,
   }
+}
+
+/**
+ * 아이템의 재고 타입 및 설정 업데이트
+ * COUNT ↔ LENGTH 전환, 또는 각 타입별 임계값 변경
+ */
+export async function updateItemSettings(
+  itemId: number,
+  payload: {
+    stockType: "COUNT" | "LENGTH"
+    // COUNT 전용
+    minimumStock?: number
+    unit?: string
+    // LENGTH 전용
+    defaultLengthMm?: number
+    totalLengthMm?: number
+    minimumLengthMm?: number
+    cutoffLengthMm?: number
+  }
+) {
+  if (!Number.isInteger(itemId)) {
+    const error = new Error("Invalid item id")
+    ;(error as Error & { status?: number }).status = 400
+    throw error
+  }
+
+  const existingItem = await prisma.item.findUnique({
+    where: { id: itemId },
+    include: { category: true },
+  })
+
+  if (!existingItem) {
+    const error = new Error("Item not found")
+    ;(error as Error & { status?: number }).status = 404
+    throw error
+  }
+
+  if (payload.stockType === "COUNT") {
+    const updatedItem = await prisma.item.update({
+      where: { id: itemId },
+      data: {
+        stockType: "COUNT",
+        minimumStock: payload.minimumStock ?? existingItem.minimumStock ?? 0,
+        unit: payload.unit?.trim() ?? existingItem.unit ?? "pcs",
+        // LENGTH 필드 초기화
+        defaultLengthMm: null,
+        totalLengthMm: null,
+        minimumLengthMm: null,
+        cutoffLengthMm: null,
+      },
+      include: { category: true },
+    })
+
+    return { ...updatedItem, category: updatedItem.category.name }
+  }
+
+  // LENGTH 타입으로 전환
+  const defaultLengthMm = payload.defaultLengthMm ?? existingItem.defaultLengthMm
+  const totalLengthMm = payload.totalLengthMm ?? existingItem.totalLengthMm ?? 0
+  const minimumLengthMm = payload.minimumLengthMm ?? existingItem.minimumLengthMm ?? 0
+  const cutoffLengthMm = payload.cutoffLengthMm ?? existingItem.cutoffLengthMm ?? 800
+
+  if (!defaultLengthMm || defaultLengthMm <= 0) {
+    const error = new Error("Default length must be greater than 0")
+    ;(error as Error & { status?: number }).status = 400
+    throw error
+  }
+
+  const updatedItem = await prisma.$transaction(async (tx) => {
+    const updated = await tx.item.update({
+      where: { id: itemId },
+      data: {
+        stockType: "LENGTH",
+        defaultLengthMm,
+        totalLengthMm,
+        minimumLengthMm,
+        cutoffLengthMm,
+        // COUNT 필드 초기화
+        quantity: null,
+        minimumStock: null,
+        unit: "mm",
+      },
+      include: { category: true },
+    })
+
+    // 초기 재고 트랜잭션 기록 (이전이 COUNT였다면)
+    if (existingItem.stockType === "COUNT" && totalLengthMm > 0) {
+      await tx.transaction.create({
+        data: {
+          itemId,
+          type: "adjustment",
+          lengthMm: totalLengthMm,
+          source: "manual",
+          note: `Converted from COUNT to LENGTH type. Initial total: ${totalLengthMm}mm`,
+        },
+      })
+    }
+
+    return updated
+  })
+
+  return { ...updatedItem, category: updatedItem.category.name }
 }
 
 /**
@@ -291,6 +445,7 @@ export async function createItem(input: CreateItemPayload) {
       defaultLengthMm: input.defaultLengthMm,
       totalLengthMm: input.totalLengthMm,
       minimumLengthMm: input.minimumLengthMm,
+      cutoffLengthMm: input.cutoffLengthMm ?? 800,
     },
     include: {
       category: true,
@@ -320,6 +475,7 @@ export async function createItem(input: CreateItemPayload) {
     defaultLengthMm: createdItem.defaultLengthMm,
     totalLengthMm: createdItem.totalLengthMm,
     minimumLengthMm: createdItem.minimumLengthMm,
+    cutoffLengthMm: createdItem.cutoffLengthMm,
     category: createdItem.category.name,
   }
 }

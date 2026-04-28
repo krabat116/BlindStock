@@ -8,6 +8,7 @@ export type InventoryItem = {
   defaultLengthMm: number | null
   totalLengthMm: number | null
   minimumLengthMm: number | null
+  cutoffLengthMm: number | null
   quantity: number
   minimumStock: number
   unit: string

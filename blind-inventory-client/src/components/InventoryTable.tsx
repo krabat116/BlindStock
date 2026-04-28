@@ -41,8 +41,20 @@ export default function InventoryTable({
                   {item.name}
                 </td>
                 <td className="px-5 py-3 text-gray-500">{item.category}</td>
-                <td className="px-5 py-3">{item.quantity}</td>
-                <td className="px-5 py-3 text-gray-500">{item.minimumStock}</td>
+                <td className="px-5 py-3">
+                  {item.stockType === "LENGTH"
+                    ? item.totalLengthMm != null
+                      ? `${item.totalLengthMm.toLocaleString()} mm`
+                      : "—"
+                    : item.quantity}
+                </td>
+                <td className="px-5 py-3 text-gray-500">
+                  {item.stockType === "LENGTH"
+                    ? item.minimumLengthMm != null
+                      ? `${item.minimumLengthMm.toLocaleString()} mm`
+                      : "—"
+                    : item.minimumStock}
+                </td>
                 <td className="px-5 py-3 text-gray-500">{item.unit}</td>
                 <td className="px-5 py-3">
                   <StockStatusBadge status={getStockStatus(item)} />

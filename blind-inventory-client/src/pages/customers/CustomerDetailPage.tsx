@@ -1,5 +1,6 @@
 import { Link, useParams } from "react-router-dom"
 import { useEffect, useState } from "react"
+import { apiFetch } from "../../lib/api"
 
 type CustomerOrder = {
   id: string
@@ -18,6 +19,9 @@ type CustomerDetail = {
   name?: string | null
   phone?: string | null
   email?: string | null
+  companyName?: string | null
+  address?: string | null
+  note?: string | null
   createdAt: string
   totalOrders: number
   latestOrderSheetNo: number | null
@@ -79,7 +83,7 @@ export default function CustomerDetailPage() {
       try {
         setLoading(true)
         setError("")
-        const response = await fetch(`http://localhost:3001/customers/${id}`)
+        const response = await apiFetch(`/customers/${id}`)
         if (!response.ok) {
           throw new Error(
             response.status === 404 ? "Customer not found" : "Failed to fetch customer detail"
@@ -172,6 +176,10 @@ export default function CustomerDetailPage() {
               <p className="mt-1 text-sm text-gray-700">{customer.name || "—"}</p>
             </div>
             <div>
+              <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Company</p>
+              <p className="mt-1 text-sm text-gray-700">{customer.companyName || "—"}</p>
+            </div>
+            <div>
               <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Phone</p>
               <p className="mt-1 text-sm text-gray-700">{customer.phone || "—"}</p>
             </div>
@@ -185,6 +193,18 @@ export default function CustomerDetailPage() {
                 {new Date(customer.createdAt).toLocaleDateString()}
               </p>
             </div>
+            {customer.address && (
+              <div className="sm:col-span-2 lg:col-span-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Address</p>
+                <p className="mt-1 text-sm text-gray-700">{customer.address}</p>
+              </div>
+            )}
+            {customer.note && (
+              <div className="sm:col-span-2 lg:col-span-3">
+                <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Note</p>
+                <p className="mt-1 text-sm text-gray-700">{customer.note}</p>
+              </div>
+            )}
           </div>
         </Section>
 

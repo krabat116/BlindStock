@@ -11,6 +11,7 @@ type DeductionRequestItem = {
   itemName: string
   category: string
   quantity: number
+  lengthMm?: number // LENGTH 타입 아이템의 차감할 총 길이(mm)
   sourceRows: number[]
 }
 
@@ -42,6 +43,7 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
       category: string
       itemName: string
       quantity: number
+      totalLengthMm: number // LENGTH 타입 아이템 전용: 행별 길이의 합산
       sourceRows: number[]
     }
   >()
@@ -54,12 +56,14 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
         category: component.category,
         itemName: component.itemName,
         quantity: 0,
+        totalLengthMm: 0,
         sourceRows: [],
       })
     }
 
     const existing = aggregatedMap.get(key)!
     existing.quantity += component.quantity
+    existing.totalLengthMm += component.lengthMm ?? 0
     existing.sourceRows.push(component.sourceRow)
   }
 
@@ -83,9 +87,13 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
       category: component.category,
       itemName: component.itemName,
       quantity: component.quantity,
+      // LENGTH 타입 아이템의 경우 총 차감 길이(mm)를 함께 반환
+      lengthMm: component.totalLengthMm > 0 ? component.totalLengthMm : null,
       sourceRows: component.sourceRows,
       matched: Boolean(matchedItem),
+      stockType: matchedItem?.stockType ?? "COUNT",
       currentStock: matchedItem?.quantity ?? null,
+      currentLengthMm: matchedItem?.totalLengthMm ?? null,
       itemId: matchedItem?.id ?? null,
     }
   })
@@ -230,12 +238,24 @@ export async function confirmOrderDeduction(
       throw error
     }
 
-    if (dbItem.quantity < previewItem.quantity) {
-      const error = new Error(
-        `Insufficient stock for ${previewItem.itemName}`
-      )
-      ;(error as Error & { status?: number }).status = 400
-      throw error
+    if (dbItem.stockType === "LENGTH") {
+      // LENGTH 타입: totalLengthMm 기준으로 재고 확인
+      if ((dbItem.totalLengthMm ?? 0) < (previewItem.lengthMm ?? 0)) {
+        const error = new Error(
+          `Insufficient stock for ${previewItem.itemName}`
+        )
+        ;(error as Error & { status?: number }).status = 400
+        throw error
+      }
+    } else {
+      // COUNT 타입: quantity 기준으로 재고 확인
+      if ((dbItem.quantity ?? 0) < previewItem.quantity) {
+        const error = new Error(
+          `Insufficient stock for ${previewItem.itemName}`
+        )
+        ;(error as Error & { status?: number }).status = 400
+        throw error
+      }
     }
   }
 
@@ -298,28 +318,50 @@ export async function confirmOrderDeduction(
 
     /**
      * Deduct stock and save inventory transactions
+     * LENGTH 타입은 totalLengthMm 차감, COUNT 타입은 quantity 차감
      */
     for (const previewItem of previewItems) {
       const dbItem = dbItems.find((item) => item.id === previewItem.itemId)!
 
-      await tx.item.update({
-        where: { id: dbItem.id },
-        data: {
-          quantity: {
-            decrement: previewItem.quantity,
+      if (dbItem.stockType === "LENGTH" && previewItem.lengthMm) {
+        await tx.item.update({
+          where: { id: dbItem.id },
+          data: {
+            totalLengthMm: {
+              decrement: previewItem.lengthMm,
+            },
           },
-        },
-      })
+        })
 
-      await tx.transaction.create({
-        data: {
-          itemId: dbItem.id,
-          type: "out",
-          quantity: previewItem.quantity,
-          source: "excel_order",
-          note: `Order upload deduction (rows: ${previewItem.sourceRows.join(", ")})`,
-        },
-      })
+        await tx.transaction.create({
+          data: {
+            itemId: dbItem.id,
+            type: "out",
+            lengthMm: previewItem.lengthMm,
+            source: "excel_order",
+            note: `Order upload deduction (rows: ${previewItem.sourceRows.join(", ")})`,
+          },
+        })
+      } else {
+        await tx.item.update({
+          where: { id: dbItem.id },
+          data: {
+            quantity: {
+              decrement: previewItem.quantity,
+            },
+          },
+        })
+
+        await tx.transaction.create({
+          data: {
+            itemId: dbItem.id,
+            type: "out",
+            quantity: previewItem.quantity,
+            source: "excel_order",
+            note: `Order upload deduction (rows: ${previewItem.sourceRows.join(", ")})`,
+          },
+        })
+      }
     }
 
     return {

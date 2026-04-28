@@ -31,34 +31,42 @@ export default function TransactionList({
               <th className="px-4 py-2 font-medium">Date</th>
               <th className="px-4 py-2 font-medium">Item</th>
               <th className="px-4 py-2 font-medium">Type</th>
-              <th className="px-4 py-2 font-medium">Quantity</th>
+              <th className="px-4 py-2 font-medium">Amount</th>
               <th className="px-4 py-2 font-medium">Source</th>
               <th className="px-4 py-2 font-medium">Note</th>
             </tr>
           </thead>
 
           <tbody>
-            {transactions.map((transaction) => (
-              <tr
-                key={transaction.id}
-                className="bg-gray-50 text-sm text-gray-700"
-              >
-                <td className="rounded-l-xl px-4 py-3">
-                  {new Date(transaction.createdAt).toLocaleString()}
-                </td>
-                <td className="px-4 py-3 font-medium text-gray-900">
-                  {transaction.itemName}
-                </td>
-                <td className="px-4 py-3">
-                  {getTypeLabel(transaction.type)}
-                </td>
-                <td className="px-4 py-3">{transaction.quantity}</td>
-                <td className="px-4 py-3">{transaction.source ?? "-"}</td>
-                <td className="rounded-r-xl px-4 py-3">
-                  {transaction.note ?? "-"}
-                </td>
-              </tr>
-            ))}
+            {transactions.map((transaction) => {
+              const amountDisplay = transaction.lengthMm != null
+                ? `${transaction.lengthMm.toLocaleString()} mm`
+                : transaction.quantity != null
+                  ? String(transaction.quantity)
+                  : "-"
+
+              return (
+                <tr
+                  key={transaction.id}
+                  className="bg-gray-50 text-sm text-gray-700"
+                >
+                  <td className="rounded-l-xl px-4 py-3">
+                    {new Date(transaction.createdAt).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-3 font-medium text-gray-900">
+                    {transaction.itemName}
+                  </td>
+                  <td className="px-4 py-3">
+                    {getTypeLabel(transaction.type)}
+                  </td>
+                  <td className="px-4 py-3">{amountDisplay}</td>
+                  <td className="px-4 py-3">{transaction.source ?? "-"}</td>
+                  <td className="rounded-r-xl px-4 py-3">
+                    {transaction.note ?? "-"}
+                  </td>
+                </tr>
+              )
+            })}
           </tbody>
         </table>
       </div>

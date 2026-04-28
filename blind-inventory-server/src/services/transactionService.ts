@@ -16,6 +16,7 @@ export async function getTransactions() {
     itemName: transaction.item.name,
     type: transaction.type,
     quantity: transaction.quantity,
+    lengthMm: transaction.lengthMm,
     source: transaction.source,
     note: transaction.note,
     createdAt: transaction.createdAt,

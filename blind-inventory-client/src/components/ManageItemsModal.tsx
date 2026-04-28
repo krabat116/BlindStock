@@ -3,6 +3,16 @@ import type { InventoryItem } from "../types/inventory"
 import type { Category } from "../types/category"
 import type { CreateItemPayload } from "../types/createItemPayload"
 
+type ItemSettingsPayload = {
+  stockType: "COUNT" | "LENGTH"
+  minimumStock?: number
+  unit?: string
+  defaultLengthMm?: number
+  totalLengthMm?: number
+  minimumLengthMm?: number
+  cutoffLengthMm?: number
+}
+
 type ManageItemsModalProps = {
   isOpen: boolean
   items: InventoryItem[]
@@ -11,6 +21,7 @@ type ManageItemsModalProps = {
   onCreateItem: (payload: CreateItemPayload) => Promise<void>
   onCreateCategory: (name: string) => Promise<void>
   onUpdateItemName: (itemId: number, name: string) => Promise<void>
+  onUpdateItemSettings: (itemId: number, payload: ItemSettingsPayload) => Promise<void>
   onDeleteItem: (itemId: number) => Promise<void>
   onOpenEditCategories: () => void
 }
@@ -25,6 +36,7 @@ export default function ManageItemsModal({
   onCreateItem,
   onCreateCategory,
   onUpdateItemName,
+  onUpdateItemSettings,
   onDeleteItem,
   onOpenEditCategories,
 }: ManageItemsModalProps) {
@@ -42,14 +54,34 @@ export default function ManageItemsModal({
   const [defaultLengthMm, setDefaultLengthMm] = useState("4000")
   const [stickCount, setStickCount] = useState("0")
   const [minimumLengthMm, setMinimumLengthMm] = useState("0")
+  const [cutoffLengthMm, setCutoffLengthMm] = useState("800")
 
   const [newCategoryName, setNewCategoryName] = useState("")
   const [editingItemId, setEditingItemId] = useState<number | null>(null)
   const [editingName, setEditingName] = useState("")
 
+  // Settings 편집 상태 (stockType 전환)
+  const [settingsItemId, setSettingsItemId] = useState<number | null>(null)
+  const [settingsStockType, setSettingsStockType] = useState<StockTypeTab>("COUNT")
+  const [settingsMinimumStock, setSettingsMinimumStock] = useState("0")
+  const [settingsUnit, setSettingsUnit] = useState("pcs")
+  const [settingsDefaultLengthMm, setSettingsDefaultLengthMm] = useState("4000")
+  const [settingsStickCount, setSettingsStickCount] = useState("0")
+  const [settingsMinimumLengthMm, setSettingsMinimumLengthMm] = useState("0")
+  const [settingsCutoffLengthMm, setSettingsCutoffLengthMm] = useState("800")
+
+  const settingsTotalLengthMm = useMemo(() => {
+    const d = Number(settingsDefaultLengthMm)
+    const s = Number(settingsStickCount)
+    if (!Number.isFinite(d) || d <= 0 || !Number.isFinite(s) || s < 0) return 0
+    return d * s
+  }, [settingsDefaultLengthMm, settingsStickCount])
+
   const [submitting, setSubmitting] = useState(false)
+  const [settingsSubmitting, setSettingsSubmitting] = useState(false)
   const [categorySubmitting, setCategorySubmitting] = useState(false)
   const [error, setError] = useState("")
+  const [settingsError, setSettingsError] = useState("")
   const [categoryError, setCategoryError] = useState("")
 
   useEffect(() => {
@@ -85,6 +117,7 @@ export default function ManageItemsModal({
     setDefaultLengthMm("4000")
     setStickCount("0")
     setMinimumLengthMm("0")
+    setCutoffLengthMm("800")
     setStockTypeTab("COUNT")
   }
 
@@ -160,6 +193,13 @@ export default function ManageItemsModal({
           return
         }
 
+        const parsedCutoffLengthMm = Number(cutoffLengthMm)
+
+        if (!Number.isFinite(parsedCutoffLengthMm) || parsedCutoffLengthMm < 0) {
+          setError("Cut-off length must be a non-negative number.")
+          return
+        }
+
         await onCreateItem({
           name: name.trim(),
           categoryId: selectedCategoryId,
@@ -167,6 +207,7 @@ export default function ManageItemsModal({
           defaultLengthMm: parsedDefaultLengthMm,
           totalLengthMm,
           minimumLengthMm: parsedMinimumLengthMm,
+          cutoffLengthMm: parsedCutoffLengthMm,
         })
       }
 
@@ -195,6 +236,92 @@ export default function ManageItemsModal({
       setCategoryError("Failed to create category.")
     } finally {
       setCategorySubmitting(false)
+    }
+  }
+
+  function handleOpenSettings(item: InventoryItem) {
+    setSettingsItemId(item.id)
+    setSettingsStockType(item.stockType)
+    setSettingsError("")
+
+    if (item.stockType === "LENGTH") {
+      setSettingsDefaultLengthMm(String(item.defaultLengthMm ?? 4000))
+      // 현재 재고를 막대 수로 역산 (표시용)
+      const defaultLen = item.defaultLengthMm ?? 4000
+      const currentTotal = item.totalLengthMm ?? 0
+      setSettingsStickCount(defaultLen > 0 ? String(Math.round(currentTotal / defaultLen)) : "0")
+      setSettingsMinimumLengthMm(String(item.minimumLengthMm ?? 0))
+      setSettingsCutoffLengthMm(String(item.cutoffLengthMm ?? 800))
+    } else {
+      setSettingsMinimumStock(String(item.minimumStock ?? 0))
+      setSettingsUnit(item.unit ?? "pcs")
+      setSettingsDefaultLengthMm("4000")
+      setSettingsStickCount("0")
+      setSettingsMinimumLengthMm("0")
+    }
+  }
+
+  async function handleSaveSettings() {
+    if (!settingsItemId) return
+
+    try {
+      setSettingsSubmitting(true)
+      setSettingsError("")
+
+      if (settingsStockType === "LENGTH") {
+        const d = Number(settingsDefaultLengthMm)
+        const s = Number(settingsStickCount)
+        const minL = Number(settingsMinimumLengthMm)
+        const cutoff = Number(settingsCutoffLengthMm)
+
+        if (!Number.isFinite(d) || d <= 0) {
+          setSettingsError("Default length must be greater than 0.")
+          return
+        }
+        if (!Number.isFinite(s) || s < 0) {
+          setSettingsError("Stick count must be a non-negative number.")
+          return
+        }
+        if (!Number.isFinite(minL) || minL < 0) {
+          setSettingsError("Minimum length must be a non-negative number.")
+          return
+        }
+        if (!Number.isFinite(cutoff) || cutoff < 0) {
+          setSettingsError("Cut-off length must be a non-negative number.")
+          return
+        }
+
+        await onUpdateItemSettings(settingsItemId, {
+          stockType: "LENGTH",
+          defaultLengthMm: d,
+          totalLengthMm: settingsTotalLengthMm,
+          minimumLengthMm: minL,
+          cutoffLengthMm: cutoff,
+        })
+      } else {
+        const minS = Number(settingsMinimumStock)
+        if (!Number.isFinite(minS) || minS < 0) {
+          setSettingsError("Minimum stock must be a non-negative number.")
+          return
+        }
+        if (!settingsUnit.trim()) {
+          setSettingsError("Unit is required.")
+          return
+        }
+
+        await onUpdateItemSettings(settingsItemId, {
+          stockType: "COUNT",
+          minimumStock: minS,
+          unit: settingsUnit.trim(),
+        })
+      }
+
+      setSettingsItemId(null)
+    } catch (err) {
+      console.error(err)
+      setSettingsError("Failed to update item settings.")
+    } finally {
+      setSettingsSubmitting(false)
     }
   }
 
@@ -346,6 +473,16 @@ export default function ManageItemsModal({
                                 Edit
                               </button>
                               <button
+                                onClick={() => handleOpenSettings(item)}
+                                className={`rounded-lg px-3 py-2 text-xs font-medium transition ${
+                                  settingsItemId === item.id
+                                    ? "bg-blue-600 text-white"
+                                    : "border border-gray-300 text-gray-700 hover:bg-gray-50"
+                                }`}
+                              >
+                                Settings
+                              </button>
+                              <button
                                 onClick={() => handleDelete(item.id)}
                                 className="rounded-lg bg-red-600 px-3 py-2 text-xs font-medium text-white hover:bg-red-700"
                               >
@@ -363,6 +500,182 @@ export default function ManageItemsModal({
           </section>
 
           <section className="space-y-6">
+            {/* ── Settings 편집 패널 ── */}
+            {settingsItemId !== null && (() => {
+              const settingItem = items.find((i) => i.id === settingsItemId)
+              if (!settingItem) return null
+
+              return (
+                <div className="rounded-2xl bg-blue-50 p-5 border border-blue-200">
+                  <div className="mb-4 flex items-center justify-between">
+                    <div>
+                      <h4 className="text-base font-semibold text-gray-900">
+                        Item Settings
+                      </h4>
+                      <p className="text-sm text-gray-500">
+                        <span className="font-medium">{settingItem.name}</span> — 재고 타입 및 설정 변경
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => setSettingsItemId(null)}
+                      className="text-gray-400 hover:text-gray-600 text-lg leading-none"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  <div className="mb-4 flex w-fit rounded-xl bg-white p-1 border border-gray-200">
+                    <button
+                      type="button"
+                      onClick={() => setSettingsStockType("COUNT")}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                        settingsStockType === "COUNT"
+                          ? "bg-gray-900 text-white shadow"
+                          : "text-gray-500 hover:text-gray-800"
+                      }`}
+                    >
+                      개수형 재고
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setSettingsStockType("LENGTH")}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                        settingsStockType === "LENGTH"
+                          ? "bg-gray-900 text-white shadow"
+                          : "text-gray-500 hover:text-gray-800"
+                      }`}
+                    >
+                      길이형 재고
+                    </button>
+                  </div>
+
+                  <div className="space-y-4">
+                    {settingsStockType === "COUNT" ? (
+                      <div className="grid gap-4 sm:grid-cols-2">
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-gray-700">
+                            Minimum Stock
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            value={settingsMinimumStock}
+                            onChange={(e) => setSettingsMinimumStock(e.target.value)}
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-gray-700">
+                            Unit
+                          </label>
+                          <input
+                            type="text"
+                            value={settingsUnit}
+                            onChange={(e) => setSettingsUnit(e.target.value)}
+                            placeholder="e.g. pcs"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+                    ) : (
+                      <>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-2 block text-sm font-medium text-gray-700">
+                              Default Length (mm)
+                            </label>
+                            <input
+                              type="number"
+                              min="1"
+                              value={settingsDefaultLengthMm}
+                              onChange={(e) => setSettingsDefaultLengthMm(e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-2 block text-sm font-medium text-gray-700">
+                              Stick Count (재고)
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={settingsStickCount}
+                              onChange={(e) => setSettingsStickCount(e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                            />
+                          </div>
+                        </div>
+                        <div className="grid gap-4 sm:grid-cols-2">
+                          <div>
+                            <label className="mb-2 block text-sm font-medium text-gray-700">
+                              Minimum Length (mm)
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={settingsMinimumLengthMm}
+                              onChange={(e) => setSettingsMinimumLengthMm(e.target.value)}
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                            />
+                          </div>
+                          <div>
+                            <label className="mb-2 block text-sm font-medium text-gray-700">
+                              Cut-off / Stick (mm)
+                            </label>
+                            <input
+                              type="number"
+                              min="0"
+                              value={settingsCutoffLengthMm}
+                              onChange={(e) => setSettingsCutoffLengthMm(e.target.value)}
+                              placeholder="e.g. 800"
+                              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                            />
+                          </div>
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-gray-700">
+                            Total Available Length
+                          </label>
+                          <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-900">
+                            {settingsTotalLengthMm.toLocaleString()} mm
+                          </div>
+                        </div>
+                      </>
+                    )}
+
+                    {settingsError && (
+                      <p className="text-sm text-red-600">{settingsError}</p>
+                    )}
+
+                    {settingsStockType !== settingItem.stockType && (
+                      <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
+                        재고 타입이 변경됩니다. 기존{" "}
+                        {settingItem.stockType === "COUNT" ? "개수" : "길이"} 데이터는 초기화됩니다.
+                      </p>
+                    )}
+
+                    <div className="flex justify-end gap-2 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setSettingsItemId(null)}
+                        className="rounded-lg border border-gray-300 px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleSaveSettings}
+                        disabled={settingsSubmitting}
+                        className="rounded-lg bg-blue-600 px-4 py-2 text-sm font-medium text-white hover:bg-blue-700 disabled:opacity-60"
+                      >
+                        {settingsSubmitting ? "Saving..." : "Save Settings"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              )
+            })()}
+
             <div className="rounded-2xl bg-gray-50 p-5">
               <div className="mb-4">
                 <h4 className="text-base font-semibold text-gray-900">
@@ -564,11 +877,25 @@ export default function ManageItemsModal({
 
                       <div>
                         <label className="mb-2 block text-sm font-medium text-gray-700">
-                          Total Available Length
+                          Cut-off / Stick (mm)
                         </label>
-                        <div className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900">
-                          {totalLengthMm.toLocaleString()} mm
-                        </div>
+                        <input
+                          type="number"
+                          min="0"
+                          value={cutoffLengthMm}
+                          onChange={(e) => setCutoffLengthMm(e.target.value)}
+                          placeholder="e.g. 800"
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-700">
+                        Total Available Length
+                      </label>
+                      <div className="rounded-lg border border-gray-300 bg-white px-3 py-2 text-sm text-gray-900">
+                        {totalLengthMm.toLocaleString()} mm
                       </div>
                     </div>
                   </>
