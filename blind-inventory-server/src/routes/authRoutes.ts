@@ -101,8 +101,8 @@ router.delete("/users/:id", requireAuth, requireAdmin, async (req, res) => {
 router.patch("/users/:id/password", requireAuth, requireAdmin, async (req, res) => {
   try {
     const id = Number(req.params.id)
-    const { password } = req.body
-    await changePassword(id, password)
+    const { password, newPassword } = req.body
+    await changePassword(id, newPassword ?? password)
     res.json({ message: "Password updated" })
   } catch (error) {
     const err = error as Error & { status?: number }

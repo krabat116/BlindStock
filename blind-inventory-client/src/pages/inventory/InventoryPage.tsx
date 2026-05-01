@@ -2,6 +2,7 @@ import { useEffect, useState } from "react"
 import { useAuth } from "../../contexts/AuthContext"
 import InventoryTable from "../../components/InventoryTable"
 import AddStockModal from "../../components/AddStockModal"
+import AdjustStockModal from "../../components/AdjustStockModal"
 import TransactionList from "../../components/TransactionList"
 import ManageItemsModal from "../../components/ManageItemsModal"
 import type { InventoryItem } from "../../types/inventory"
@@ -9,6 +10,8 @@ import type { InventoryTransaction } from "../../types/transaction"
 import type { Category } from "../../types/category"
 import EditCategoriesModal from "../../components/EditCategoriesModal"
 import OrderUploadPanel from "../../components/OrderUploadPanel"
+import BatchUploadPanel from "../../components/BatchUploadPanel"
+import type { BatchResult } from "../../components/BatchUploadPanel"
 import type { OrderPreviewItem, OrderPreviewResponse } from "../../types/orderPreview"
 import type { CreateItemPayload } from "../../types/createItemPayload"
 import { apiFetch } from "../../lib/api"
@@ -67,6 +70,9 @@ export default function InventoryPage() {
   const { user } = useAuth()
   const isAdmin = user?.role === "ADMIN"
 
+  const [orderUploadMode, setOrderUploadMode] = useState<"single" | "batch">("single")
+
+  // Single upload state
   const [uploadedFile, setUploadedFile] = useState<File | null>(null)
   const [orderYear, setOrderYear] = useState("")
   const [orderMonth, setOrderMonth] = useState("")
@@ -75,6 +81,14 @@ export default function InventoryPage() {
   const [orderPreviewLoading, setOrderPreviewLoading] = useState(false)
   const [orderPreviewError, setOrderPreviewError] = useState("")
 
+  // Batch upload state
+  const [batchFiles, setBatchFiles] = useState<File[]>([])
+  const [batchYear, setBatchYear] = useState("")
+  const [batchMonth, setBatchMonth] = useState("")
+  const [batchRunning, setBatchRunning] = useState(false)
+  const [batchProgress, setBatchProgress] = useState({ current: 0, total: 0 })
+  const [batchResults, setBatchResults] = useState<BatchResult[]>([])
+
   const [items, setItems] = useState<InventoryItem[]>([])
   const [transactions, setTransactions] = useState<InventoryTransaction[]>([])
   const [categories, setCategories] = useState<Category[]>([])
@@ -82,6 +96,7 @@ export default function InventoryPage() {
   const [error, setError] = useState("")
   const [selectedItem, setSelectedItem] = useState<InventoryItem | null>(null)
   const [isAddStockModalOpen, setIsAddStockModalOpen] = useState(false)
+  const [isAdjustStockModalOpen, setIsAdjustStockModalOpen] = useState(false)
   const [isManageItemsModalOpen, setIsManageItemsModalOpen] = useState(false)
   const [isEditCategoriesModalOpen, setIsEditCategoriesModalOpen] = useState(false)
   const [orderSheetNo, setOrderSheetNo] = useState<number | null>(null)
@@ -233,6 +248,109 @@ export default function InventoryPage() {
     setOrderTotalItems(0)
   }
 
+  async function handleBatchUpload() {
+    if (!batchFiles.length || !batchYear || !batchMonth) return
+
+    setBatchRunning(true)
+    setBatchResults([])
+    setBatchProgress({ current: 0, total: batchFiles.length })
+
+    const results: BatchResult[] = []
+
+    for (let i = 0; i < batchFiles.length; i++) {
+      const file = batchFiles[i]
+      setBatchProgress({ current: i + 1, total: batchFiles.length })
+
+      try {
+        // Step 1: Preview
+        const formData = new FormData()
+        formData.append("file", file)
+        formData.append("year", batchYear)
+        formData.append("month", batchMonth)
+
+        const previewRes = await apiFetch("/orders/preview", { method: "POST", body: formData })
+
+        if (!previewRes.ok) {
+          results.push({ fileName: file.name, status: "error", message: "Failed to parse file" })
+          setBatchResults([...results])
+          continue
+        }
+
+        const previewData: OrderPreviewResponse = await previewRes.json()
+
+        // Step 2: Check for issues
+        const missingCount = previewData.preview.filter((item) => !item.matched).length
+        const insufficientCount = previewData.preview.filter((item) => {
+          if (!item.matched) return false
+          if (item.stockType === "LENGTH") {
+            return (item.currentLengthMm ?? 0) < (item.lengthMm ?? 0)
+          }
+          return (item.currentStock ?? 0) < item.quantity
+        }).length
+
+        if (missingCount > 0 || insufficientCount > 0) {
+          const parts: string[] = []
+          if (missingCount > 0) parts.push(`${missingCount} missing item${missingCount > 1 ? "s" : ""}`)
+          if (insufficientCount > 0) parts.push(`${insufficientCount} insufficient`)
+          results.push({ fileName: file.name, status: "skipped", message: parts.join(", ") })
+          setBatchResults([...results])
+          continue
+        }
+
+        // Step 3: Confirm deduction
+        const payload = {
+          year: Number(batchYear),
+          month: Number(batchMonth),
+          fileName: file.name,
+          accountName: previewData.accountName,
+          orderSheetNo: previewData.orderSheetNo,
+          totalItems: previewData.totalItems,
+          previewItems: previewData.preview
+            .filter((item) => item.matched && item.itemId !== null)
+            .map((item) => ({
+              itemId: item.itemId!,
+              itemName: item.itemName,
+              category: item.category,
+              quantity: item.quantity,
+              ...(item.lengthMm !== null ? { lengthMm: item.lengthMm } : {}),
+              sourceRows: item.sourceRows,
+            })),
+        }
+
+        const confirmRes = await apiFetch("/orders/confirm-deduction", {
+          method: "POST",
+          body: JSON.stringify(payload),
+        })
+
+        if (!confirmRes.ok) {
+          results.push({ fileName: file.name, status: "error", message: "Deduction failed" })
+        } else {
+          const count = previewData.preview.length
+          results.push({
+            fileName: file.name,
+            status: "success",
+            message: `${count} item${count !== 1 ? "s" : ""} deducted`,
+          })
+        }
+      } catch {
+        results.push({ fileName: file.name, status: "error", message: "Unexpected error" })
+      }
+
+      setBatchResults([...results])
+    }
+
+    setBatchRunning(false)
+    await fetchAllData()
+  }
+
+  function handleClearBatch() {
+    setBatchFiles([])
+    setBatchYear("")
+    setBatchMonth("")
+    setBatchResults([])
+    setBatchProgress({ current: 0, total: 0 })
+  }
+
   // ── Item / category handlers ───────────────
   function handleOpenAddStock(item: InventoryItem) {
     setSelectedItem(item)
@@ -242,6 +360,39 @@ export default function InventoryPage() {
   function handleCloseAddStockModal() {
     setIsAddStockModalOpen(false)
     setSelectedItem(null)
+  }
+
+  function handleOpenAdjustStock(item: InventoryItem) {
+    setSelectedItem(item)
+    setIsAdjustStockModalOpen(true)
+  }
+
+  function handleCloseAdjustStockModal() {
+    setIsAdjustStockModalOpen(false)
+    setSelectedItem(null)
+  }
+
+  async function handleAdjustStock(
+    itemId: number,
+    type: "out" | "adjustment",
+    value: number,
+    note: string
+  ) {
+    const item = items.find((i) => i.id === itemId)
+    const body =
+      item?.stockType === "LENGTH"
+        ? { type, totalLengthMm: value, note }
+        : { type, quantity: value, note }
+
+    const response = await apiFetch(`/items/${itemId}/adjust`, {
+      method: "PATCH",
+      body: JSON.stringify(body),
+    })
+    if (!response.ok) {
+      const errorData = await response.json().catch(() => null)
+      throw new Error(errorData?.message || "Failed to adjust stock")
+    }
+    await fetchAllData()
   }
 
   async function handleSaveStock(itemId: number, value: number, note: string) {
@@ -388,6 +539,7 @@ export default function InventoryPage() {
               <InventoryTable
                 items={items}
                 onOpenAddStock={handleOpenAddStock}
+                onOpenAdjustStock={handleOpenAdjustStock}
                 onOpenManageItems={() => setIsManageItemsModalOpen(true)}
               />
             </Section>
@@ -398,23 +550,65 @@ export default function InventoryPage() {
             </Section>
 
             {/* ── Order upload ── */}
-            <Section title="Order upload">
+            <Section
+              title="Order upload"
+              actions={
+                <div className="flex rounded-md border border-gray-200 overflow-hidden text-xs">
+                  <button
+                    onClick={() => setOrderUploadMode("single")}
+                    className={`px-3 py-1 transition-colors ${
+                      orderUploadMode === "single"
+                        ? "bg-gray-900 text-white"
+                        : "text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    Single
+                  </button>
+                  <button
+                    onClick={() => setOrderUploadMode("batch")}
+                    className={`px-3 py-1 transition-colors border-l border-gray-200 ${
+                      orderUploadMode === "batch"
+                        ? "bg-gray-900 text-white"
+                        : "text-gray-600 hover:bg-gray-50"
+                    }`}
+                  >
+                    Batch
+                  </button>
+                </div>
+              }
+            >
               <div className="p-5">
-                <OrderUploadPanel
-                  file={uploadedFile}
-                  year={orderYear}
-                  month={orderMonth}
-                  preview={orderPreview}
-                  parsedRowCount={parsedRowCount}
-                  loading={orderPreviewLoading}
-                  error={orderPreviewError}
-                  onFileChange={setUploadedFile}
-                  onYearChange={setOrderYear}
-                  onMonthChange={setOrderMonth}
-                  onPreviewUpload={handlePreviewUpload}
-                  onConfirmDeduction={handleConfirmDeduction}
-                  onClearPreview={handleClearPreview}
-                />
+                {orderUploadMode === "single" ? (
+                  <OrderUploadPanel
+                    file={uploadedFile}
+                    year={orderYear}
+                    month={orderMonth}
+                    preview={orderPreview}
+                    parsedRowCount={parsedRowCount}
+                    loading={orderPreviewLoading}
+                    error={orderPreviewError}
+                    onFileChange={setUploadedFile}
+                    onYearChange={setOrderYear}
+                    onMonthChange={setOrderMonth}
+                    onPreviewUpload={handlePreviewUpload}
+                    onConfirmDeduction={handleConfirmDeduction}
+                    onClearPreview={handleClearPreview}
+                  />
+                ) : (
+                  <BatchUploadPanel
+                    files={batchFiles}
+                    year={batchYear}
+                    month={batchMonth}
+                    running={batchRunning}
+                    progress={batchProgress}
+                    results={batchResults}
+                    onFilesChange={setBatchFiles}
+                    onYearChange={setBatchYear}
+                    onMonthChange={setBatchMonth}
+                    onStartBatch={handleBatchUpload}
+                    onClear={handleClearBatch}
+                  />
+                )}
               </div>
             </Section>
           </>
@@ -427,6 +621,13 @@ export default function InventoryPage() {
         item={selectedItem}
         onClose={handleCloseAddStockModal}
         onSave={handleSaveStock}
+      />
+
+      <AdjustStockModal
+        isOpen={isAdjustStockModalOpen}
+        item={selectedItem}
+        onClose={handleCloseAdjustStockModal}
+        onSave={handleAdjustStock}
       />
 
       <ManageItemsModal

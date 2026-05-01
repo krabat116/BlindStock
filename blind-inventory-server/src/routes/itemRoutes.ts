@@ -2,6 +2,7 @@ import express from "express"
 import {
   getItems,
   updateItemStock,
+  adjustItemStock,
   updateItemName,
   updateItemSettings,
   createItem,
@@ -48,6 +49,39 @@ router.patch("/:id/stock", async (req, res) => {
 
     const message =
       error instanceof Error ? error.message : "Failed to update stock"
+
+    res.status(status).json({ message })
+  }
+})
+
+/**
+ * PATCH /items/:id/adjust
+ * Manual stock adjustment
+ * type "out"        → deduct from current stock
+ * type "adjustment" → set to exact value
+ */
+router.patch("/:id/adjust", async (req, res) => {
+  try {
+    const itemId = Number(req.params.id)
+    const { type, quantity, totalLengthMm, note } = req.body
+
+    if (type !== "out" && type !== "adjustment") {
+      res.status(400).json({ message: "type must be 'out' or 'adjustment'" })
+      return
+    }
+
+    const updatedItem = await adjustItemStock(itemId, { type, quantity, totalLengthMm, note })
+    res.json(updatedItem)
+  } catch (error) {
+    console.error("Failed to adjust stock:", error)
+
+    const status =
+      error instanceof Error && "status" in error && typeof error.status === "number"
+        ? error.status
+        : 500
+
+    const message =
+      error instanceof Error ? error.message : "Failed to adjust stock"
 
     res.status(status).json({ message })
   }

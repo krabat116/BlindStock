@@ -8,7 +8,6 @@ export async function getTransactions() {
     orderBy: {
       createdAt: "desc",
     },
-    take: 10,
   })
 
   return transactions.map((transaction) => ({

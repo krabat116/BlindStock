@@ -12,7 +12,12 @@ import { requireAuth } from "./middleware/authMiddleware"
 
 const app = express()
 
-app.use(cors())
+app.use(
+  cors({
+    origin: process.env.ALLOWED_ORIGIN || "http://localhost:5173",
+    credentials: true,
+  })
+)
 app.use(express.json())
 
 // Public auth routes (login, setup) — no JWT required

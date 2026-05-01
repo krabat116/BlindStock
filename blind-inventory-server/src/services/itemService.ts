@@ -480,6 +480,171 @@ export async function createItem(input: CreateItemPayload) {
   }
 }
 /**
+ * Manually adjust stock for one item
+ * type "out"        → deduct from current stock (차감)
+ * type "adjustment" → set to an exact value (재고 보정)
+ */
+export async function adjustItemStock(
+  itemId: number,
+  payload: {
+    type: "out" | "adjustment"
+    quantity?: number
+    totalLengthMm?: number
+    note: string
+  }
+) {
+  if (!Number.isInteger(itemId)) {
+    const error = new Error("Invalid item id")
+    ;(error as Error & { status?: number }).status = 400
+    throw error
+  }
+
+  if (!payload.note?.trim()) {
+    const error = new Error("Note is required for stock adjustments")
+    ;(error as Error & { status?: number }).status = 400
+    throw error
+  }
+
+  const existingItem = await prisma.item.findUnique({
+    where: { id: itemId },
+    include: { category: true },
+  })
+
+  if (!existingItem) {
+    const error = new Error("Item not found")
+    ;(error as Error & { status?: number }).status = 404
+    throw error
+  }
+
+  const { type, note } = payload
+
+  if (existingItem.stockType === "LENGTH") {
+    const value = payload.totalLengthMm ?? 0
+
+    if (typeof value !== "number" || value < 0) {
+      const error = new Error("Value must be a non-negative number")
+      ;(error as Error & { status?: number }).status = 400
+      throw error
+    }
+
+    const currentTotal = existingItem.totalLengthMm ?? 0
+
+    let newTotal: number
+    let transactionLengthMm: number
+
+    if (type === "out") {
+      if (value > currentTotal) {
+        const error = new Error("Deduction amount exceeds current stock")
+        ;(error as Error & { status?: number }).status = 400
+        throw error
+      }
+      newTotal = currentTotal - value
+      transactionLengthMm = value
+    } else {
+      // adjustment: set exact value
+      newTotal = value
+      transactionLengthMm = Math.abs(value - currentTotal)
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedItem = await tx.item.update({
+        where: { id: itemId },
+        data: { totalLengthMm: newTotal },
+        include: { category: true },
+      })
+
+      await tx.transaction.create({
+        data: {
+          itemId,
+          type: type === "out" ? "out" : "adjustment",
+          lengthMm: transactionLengthMm,
+          source: "manual",
+          note: note.trim(),
+        },
+      })
+
+      return updatedItem
+    })
+
+    return {
+      id: result.id,
+      name: result.name,
+      stockType: result.stockType,
+      quantity: result.quantity,
+      minimumStock: result.minimumStock,
+      unit: result.unit,
+      defaultLengthMm: result.defaultLengthMm,
+      totalLengthMm: result.totalLengthMm,
+      minimumLengthMm: result.minimumLengthMm,
+      cutoffLengthMm: result.cutoffLengthMm,
+      category: result.category.name,
+    }
+  }
+
+  // COUNT type
+  const value = payload.quantity ?? 0
+
+  if (typeof value !== "number" || value < 0) {
+    const error = new Error("Value must be a non-negative number")
+    ;(error as Error & { status?: number }).status = 400
+    throw error
+  }
+
+  const currentQty = existingItem.quantity ?? 0
+
+  let newQty: number
+  let transactionQty: number
+
+  if (type === "out") {
+    if (value > currentQty) {
+      const error = new Error("Deduction amount exceeds current stock")
+      ;(error as Error & { status?: number }).status = 400
+      throw error
+    }
+    newQty = currentQty - value
+    transactionQty = value
+  } else {
+    // adjustment: set exact value
+    newQty = value
+    transactionQty = Math.abs(value - currentQty)
+  }
+
+  const result = await prisma.$transaction(async (tx) => {
+    const updatedItem = await tx.item.update({
+      where: { id: itemId },
+      data: { quantity: newQty },
+      include: { category: true },
+    })
+
+    await tx.transaction.create({
+      data: {
+        itemId,
+        type: type === "out" ? "out" : "adjustment",
+        quantity: transactionQty,
+        source: "manual",
+        note: note.trim(),
+      },
+    })
+
+    return updatedItem
+  })
+
+  return {
+    id: result.id,
+    name: result.name,
+    stockType: result.stockType,
+    quantity: result.quantity,
+    minimumStock: result.minimumStock,
+    unit: result.unit,
+    defaultLengthMm: result.defaultLengthMm,
+    totalLengthMm: result.totalLengthMm,
+    minimumLengthMm: result.minimumLengthMm,
+    cutoffLengthMm: result.cutoffLengthMm,
+    category: result.category.name,
+  }
+}
+
+/**
  * Delete one item
  */
 export async function deleteItem(itemId: number) {

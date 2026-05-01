@@ -338,7 +338,7 @@ export async function confirmOrderDeduction(
             itemId: dbItem.id,
             type: "out",
             lengthMm: previewItem.lengthMm,
-            source: "excel_order",
+            source: `${year}/${String(month).padStart(2, "0")} · #${orderSheetNo}`,
             note: `Order upload deduction (rows: ${previewItem.sourceRows.join(", ")})`,
           },
         })
@@ -357,7 +357,7 @@ export async function confirmOrderDeduction(
             itemId: dbItem.id,
             type: "out",
             quantity: previewItem.quantity,
-            source: "excel_order",
+            source: `${year}/${String(month).padStart(2, "0")} · #${orderSheetNo}`,
             note: `Order upload deduction (rows: ${previewItem.sourceRows.join(", ")})`,
           },
         })

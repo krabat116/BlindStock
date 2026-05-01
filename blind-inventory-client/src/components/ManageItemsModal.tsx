@@ -28,6 +28,12 @@ type ManageItemsModalProps = {
 
 type StockTypeTab = "COUNT" | "LENGTH"
 
+const LENGTH_ONLY_CATEGORIES = ["ALUMINIUM TUBES", "FINISH"]
+
+function isLengthCategory(name: string) {
+  return LENGTH_ONLY_CATEGORIES.includes(name.toUpperCase())
+}
+
 export default function ManageItemsModal({
   isOpen,
   items,
@@ -55,6 +61,24 @@ export default function ManageItemsModal({
   const [stickCount, setStickCount] = useState("0")
   const [minimumLengthMm, setMinimumLengthMm] = useState("0")
   const [cutoffLengthMm, setCutoffLengthMm] = useState("800")
+
+  const filteredCategories = useMemo(() => {
+    if (stockTypeTab === "LENGTH") {
+      return categories.filter((c) => isLengthCategory(c.name))
+    }
+    return categories.filter((c) => !isLengthCategory(c.name))
+  }, [categories, stockTypeTab])
+
+  function handleTabChange(tab: StockTypeTab) {
+    setStockTypeTab(tab)
+    const nextFiltered =
+      tab === "LENGTH"
+        ? categories.filter((c) => isLengthCategory(c.name))
+        : categories.filter((c) => !isLengthCategory(c.name))
+    if (nextFiltered.length > 0 && !nextFiltered.find((c) => c.id === selectedCategoryId)) {
+      setSelectedCategoryId(nextFiltered[0].id)
+    }
+  }
 
   const [newCategoryName, setNewCategoryName] = useState("")
   const [editingItemId, setEditingItemId] = useState<number | null>(null)
@@ -86,7 +110,9 @@ export default function ManageItemsModal({
 
   useEffect(() => {
     if (isOpen && categories.length > 0) {
-      setSelectedCategoryId(categories[0].id)
+      const countCats = categories.filter((c) => !isLengthCategory(c.name))
+      setSelectedCategoryId(countCats.length > 0 ? countCats[0].id : categories[0].id)
+      setStockTypeTab("COUNT")
     }
   }, [isOpen, categories])
 
@@ -513,7 +539,7 @@ export default function ManageItemsModal({
                         Item Settings
                       </h4>
                       <p className="text-sm text-gray-500">
-                        <span className="font-medium">{settingItem.name}</span> — 재고 타입 및 설정 변경
+                        <span className="font-medium">{settingItem.name}</span> — change stock type and settings
                       </p>
                     </div>
                     <button
@@ -534,7 +560,7 @@ export default function ManageItemsModal({
                           : "text-gray-500 hover:text-gray-800"
                       }`}
                     >
-                      개수형 재고
+                      Count
                     </button>
                     <button
                       type="button"
@@ -545,7 +571,7 @@ export default function ManageItemsModal({
                           : "text-gray-500 hover:text-gray-800"
                       }`}
                     >
-                      길이형 재고
+                      Length
                     </button>
                   </div>
 
@@ -594,7 +620,7 @@ export default function ManageItemsModal({
                           </div>
                           <div>
                             <label className="mb-2 block text-sm font-medium text-gray-700">
-                              Stick Count (재고)
+                              Stick Count
                             </label>
                             <input
                               type="number"
@@ -649,8 +675,8 @@ export default function ManageItemsModal({
 
                     {settingsStockType !== settingItem.stockType && (
                       <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
-                        재고 타입이 변경됩니다. 기존{" "}
-                        {settingItem.stockType === "COUNT" ? "개수" : "길이"} 데이터는 초기화됩니다.
+                        Stock type will be changed. Existing{" "}
+                        {settingItem.stockType === "COUNT" ? "count" : "length"} data will be reset.
                       </p>
                     )}
 
@@ -730,26 +756,26 @@ export default function ManageItemsModal({
               <div className="mb-4 flex w-fit rounded-xl bg-gray-100 p-1">
                 <button
                   type="button"
-                  onClick={() => setStockTypeTab("COUNT")}
+                  onClick={() => handleTabChange("COUNT")}
                   className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
                     stockTypeTab === "COUNT"
                       ? "bg-white text-gray-900 shadow"
                       : "text-gray-500 hover:text-gray-800"
                   }`}
                 >
-                  개수형 재고
+                  Count
                 </button>
 
                 <button
                   type="button"
-                  onClick={() => setStockTypeTab("LENGTH")}
+                  onClick={() => handleTabChange("LENGTH")}
                   className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
                     stockTypeTab === "LENGTH"
                       ? "bg-white text-gray-900 shadow"
                       : "text-gray-500 hover:text-gray-800"
                   }`}
                 >
-                  길이형 재고
+                  Length
                 </button>
               </div>
 
@@ -763,7 +789,7 @@ export default function ManageItemsModal({
                     onChange={(e) => setSelectedCategoryId(Number(e.target.value))}
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
                   >
-                    {categories.map((category) => (
+                    {filteredCategories.map((category) => (
                       <option key={category.id} value={category.id}>
                         {category.name}
                       </option>

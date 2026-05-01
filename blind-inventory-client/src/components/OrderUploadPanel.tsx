@@ -215,7 +215,7 @@ export default function OrderUploadPanel({
                       <td className="px-4 py-3 font-medium text-gray-900">
                         {item.itemName}
                         {isLength && (
-                          <span className="ml-1.5 text-xs text-blue-500 font-normal">길이</span>
+                          <span className="ml-1.5 text-xs text-blue-500 font-normal">Length</span>
                         )}
                       </td>
                       <td className="px-4 py-3">{requiredDisplay}</td>
