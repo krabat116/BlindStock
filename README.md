@@ -1,3 +1,4 @@
+<img width="1076" height="796" alt="Screenshot 2026-05-04 at 2 47 13 PM" src="https://github.com/user-attachments/assets/307e83ee-3c96-4f3f-8a98-52e5211eed0b" />
 ## 🚀 BlindStock
 
 ### 📌 Project Overview
