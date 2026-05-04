@@ -1,44 +1,87 @@
 
-## 🚀 BlindStock
+# 🚀 BlindStock
 
-### 📌 Project Overview
-BlindStock is an inventory and order management system designed for a small-scale blinds manufacturing factory.
+BlindStock is a full-stack inventory and order management system built for a small-scale blinds manufacturing factory.
 
-The project was initiated to solve real-world issues caused by manual Excel-based inventory tracking, which often led to stock mismatches and production delays.
-
----
-
-### ⚠️ Problem
-- Inventory was managed manually using Excel
-- Frequent human errors caused stock inconsistencies
-- No visibility into component usage or order history
+It was developed to replace manual Excel-based inventory tracking, which frequently caused stock mismatches and disrupted the production process.
 
 ---
 
-### ✅ Solution
-Built a web-based system that automates inventory tracking and integrates order data processing.
+## 📌 Problem
+
+- Inventory was manually tracked using Excel spreadsheets  
+- Frequent human errors led to stock inconsistencies  
+- No clear visibility into component usage or order history  
+- Difficult to trace which components were used for each order  
 
 ---
 
-### 🔧 Key Features
-- Category-based item management (Create / Update / Delete)
-- Real-time inventory tracking and updates
-- Excel order file parsing to extract component data
-- Automated stock deduction based on order requirements
-- Customer information extraction and order history tracking
+## ✅ Solution
+
+BlindStock automates inventory management by integrating order processing, component tracking, and customer data into a single system.
+
+- Upload Excel order files  
+- Automatically extract component and customer data  
+- Calculate required parts based on specifications  
+- Deduct inventory in real time  
+- Store customer order history  
 
 ---
 
-### 💡 Highlights
-- Implemented Excel parsing logic to map order data into structured components
-- Designed a system to calculate required parts based on blind specifications
-- Separated inventory state from historical usage data for future analytics
+## 🔧 Key Features
+
+- 📦 **Inventory Management**
+  - Category-based item organization  
+  - Create / Update / Delete items  
+  - Real-time stock updates  
+
+- 📄 **Excel Order Processing**
+  - Parse uploaded order sheets  
+  - Extract component data from structured/unstructured formats  
+  - Map order specifications to required components  
+
+- ⚙️ **Automated Stock Deduction**
+  - Calculate required components per order  
+  - Deduct inventory based on actual usage  
+
+- 👤 **Customer & Order Tracking**
+  - Extract customer information from order files  
+  - Store order history for each client  
 
 ---
 
-### 🎯 Future Improvements
-- Monthly component usage analytics dashboard
-- Low-stock prediction and alerts
-- Customer-specific ordering patterns and insights
+## 💡 Technical Highlights
+
+- Designed a data model separating:
+  - Current inventory state  
+  - Historical component usage  
+
+- Built Excel parsing logic to transform raw order data into structured components  
+
+- Implemented business rules to map blind specifications (e.g. size, type) to required parts  
+
+- Structured the system to support future analytics (e.g. monthly component usage tracking)  
+
+---
+
+## 🛠️ Tech Stack
+
+- **Frontend:** React, TypeScript, Tailwind CSS  
+- **Backend:** Node.js, Express  
+- **Database:** Prisma ORM (SQLite / PostgreSQL)  
+- **Other:** Excel parsing (xlsx)
+
+---
+
+## 🎯 Future Improvements
+
+- 📊 Monthly component usage analytics dashboard  
+- 🔔 Low stock prediction and alert system  
+- 📈 Customer-specific ordering insights  
+- 📱 Tablet-based worker tracking system  
+
+---
+
+
 
  <img width="1076" height="796" alt="Screenshot 2026-05-04 at 2 47 13 PM" src="https://github.com/user-attachments/assets/307e83ee-3c96-4f3f-8a98-52e5211eed0b" />
