@@ -59,6 +59,9 @@ function normalizeChainType(chainTypeRaw: string) {
     M: "METAL CHAIN",
     W: "WHITE CHAIN",
     B: "BLACK CHAIN",
+    C: "CREAM CHAIN",
+    S: "STAINLESS CHAIN",
+    SS: "STAINLESS CHAIN",
   }
 
   return chainTypeMap[value] ?? value

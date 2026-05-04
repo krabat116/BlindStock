@@ -14,6 +14,8 @@ type OrderUploadPanelProps = {
   onPreviewUpload: () => Promise<void>
   onConfirmDeduction: () => Promise<void>
   onClearPreview: () => void
+  onCreateMissingItems: () => Promise<void>
+  onFillInsufficientStock: () => Promise<void>
 }
 
 function getPreviewStatus(item: OrderPreviewItem) {
@@ -65,6 +67,8 @@ export default function OrderUploadPanel({
   onPreviewUpload,
   onConfirmDeduction,
   onClearPreview,
+  onCreateMissingItems,
+  onFillInsufficientStock,
 }: OrderUploadPanelProps) {
   const hasMissingItems = preview.some((item) => !item.matched)
   const hasInsufficientStock = preview.some((item) => {
@@ -253,10 +257,33 @@ export default function OrderUploadPanel({
             </table>
           </div>
 
-          {(hasMissingItems || hasInsufficientStock) && (
-            <p className="text-xs text-red-600">
-              Resolve missing items or insufficient stock before confirming deduction.
-            </p>
+          {hasMissingItems && (
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-red-600 flex-1">
+                Some items are missing from inventory. Create them with 0 stock to continue.
+              </p>
+              <button
+                onClick={onCreateMissingItems}
+                disabled={loading}
+                className="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+              >
+                Create missing items
+              </button>
+            </div>
+          )}
+          {!hasMissingItems && hasInsufficientStock && (
+            <div className="flex items-center gap-3">
+              <p className="text-xs text-red-600 flex-1">
+                Some items have insufficient stock. Top up to the required amount to continue.
+              </p>
+              <button
+                onClick={onFillInsufficientStock}
+                disabled={loading}
+                className="shrink-0 rounded-md border border-gray-300 bg-white px-3 py-1.5 text-xs font-medium text-gray-700 hover:bg-gray-50 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+              >
+                Fill insufficient stock
+              </button>
+            </div>
           )}
 
           <div className="flex items-center justify-end gap-2">

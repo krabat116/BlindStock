@@ -108,6 +108,10 @@ export function mapOrderRowToComponents(row: ParsedOrderRow): PreviewComponent[]
       category: "Finish",
       itemName: finishName,
       quantity: qty,
+      // Finish는 LENGTH 타입: 블라인드 가로 너비(mm) × 수량 = 차감할 길이
+      ...(typeof row.width === "number" && !Number.isNaN(row.width)
+        ? { lengthMm: row.width * qty }
+        : {}),
     })
   }
 

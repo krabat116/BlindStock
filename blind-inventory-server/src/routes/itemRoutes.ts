@@ -7,6 +7,7 @@ import {
   updateItemSettings,
   createItem,
   deleteItem,
+  bulkCreateMissingItems,
 } from "../services/itemService"
 import { requireAdmin } from "../middleware/authMiddleware"
 
@@ -134,6 +135,26 @@ router.patch("/:id", requireAdmin, async (req, res) => {
       error instanceof Error ? error.message : "Failed to update item"
 
     res.status(status).json({ message })
+  }
+})
+
+/**
+ * POST /items/bulk-create-missing
+ * Create items that appeared as "Missing" in an order preview.
+ * Skips items that already exist. Requires admin.
+ */
+router.post("/bulk-create-missing", requireAdmin, async (req, res) => {
+  try {
+    const { items } = req.body
+    if (!Array.isArray(items) || items.length === 0) {
+      res.status(400).json({ message: "items must be a non-empty array" })
+      return
+    }
+    const result = await bulkCreateMissingItems(items)
+    res.json(result)
+  } catch (error) {
+    console.error("Failed to bulk-create missing items:", error)
+    res.status(500).json({ message: "Failed to create missing items" })
   }
 })
 

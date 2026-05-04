@@ -1,5 +1,6 @@
 import prisma from "../lib/prisma"
 import type { CreateItemPayload } from "../types/CreateItemPayload"
+import { normalizeCategoryName } from "../utils/normalize"
 
 /**
  * Get all inventory items with category names
@@ -156,6 +157,7 @@ export async function updateItemSettings(
   payload: {
     stockType: "COUNT" | "LENGTH"
     // COUNT 전용
+    quantity?: number
     minimumStock?: number
     unit?: string
     // LENGTH 전용
@@ -187,6 +189,7 @@ export async function updateItemSettings(
       where: { id: itemId },
       data: {
         stockType: "COUNT",
+        quantity: payload.quantity !== undefined ? payload.quantity : (existingItem.quantity ?? 0),
         minimumStock: payload.minimumStock ?? existingItem.minimumStock ?? 0,
         unit: payload.unit?.trim() ?? existingItem.unit ?? "pcs",
         // LENGTH 필드 초기화
@@ -667,4 +670,62 @@ export async function deleteItem(itemId: number) {
   await prisma.item.delete({
     where: { id: itemId },
   })
+}
+
+/**
+ * Bulk-create items that are "Missing" in an order preview.
+ * - Normalizes Excel category names (e.g. "Tube" → "ALUMINIUM TUBES")
+ * - Skips items that already exist (case-insensitive name match)
+ * - Skips items whose category doesn't exist in the DB
+ * - Tube items get stockType LENGTH; all others get COUNT
+ */
+export async function bulkCreateMissingItems(
+  items: { category: string; itemName: string }[]
+) {
+  let created = 0
+  let skipped = 0
+
+  for (const { category, itemName } of items) {
+    const normalizedCategory = normalizeCategoryName(category)
+
+    const dbCategory = await prisma.category.findFirst({
+      where: { name: normalizedCategory },
+    })
+
+    if (!dbCategory) {
+      skipped++
+      continue
+    }
+
+    // Skip if item already exists (case-insensitive, checked in JS)
+    const categoryItems = await prisma.item.findMany({
+      where: { categoryId: dbCategory.id },
+      select: { name: true },
+    })
+    const existing = categoryItems.some(
+      (i) => i.name.toUpperCase() === itemName.toUpperCase()
+    )
+
+    if (existing) {
+      skipped++
+      continue
+    }
+
+    const isLength = normalizedCategory === "ALUMINIUM TUBES" || normalizedCategory === "FINISH"
+
+    await prisma.item.create({
+      data: {
+        name: itemName,
+        categoryId: dbCategory.id,
+        stockType: isLength ? "LENGTH" : "COUNT",
+        ...(isLength
+          ? { totalLengthMm: 0, minimumLengthMm: 0 }
+          : { quantity: 0, minimumStock: 0, unit: "pcs" }),
+      },
+    })
+
+    created++
+  }
+
+  return { created, skipped }
 }

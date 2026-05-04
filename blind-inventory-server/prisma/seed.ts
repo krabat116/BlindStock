@@ -1,62 +1,40 @@
 import "dotenv/config"
-import { PrismaBetterSqlite3 } from "@prisma/adapter-better-sqlite3"
+import { PrismaPg } from "@prisma/adapter-pg"
 import { PrismaClient } from "@prisma/client"
 
-const adapter = new PrismaBetterSqlite3({
-  url: process.env.DATABASE_URL || "file:./dev.db",
+const adapter = new PrismaPg({
+  connectionString: process.env.DATABASE_URL,
 })
 
 const prisma = new PrismaClient({ adapter })
 
+/**
+ * These 5 categories are domain constants for roller blind manufacturing.
+ * They must exist in the DB for Excel order uploads to match and deduct stock.
+ *
+ * Run with: npx prisma db seed
+ */
+const REQUIRED_CATEGORIES = [
+  "FINISH",
+  "WINDER",
+  "PIN",
+  "CHAIN",
+  "ALUMINIUM TUBES",
+]
+
 async function main() {
-  await prisma.transaction.deleteMany()
-  await prisma.item.deleteMany()
-  await prisma.category.deleteMany()
+  console.log("Seeding required categories...")
 
-  const chainCategory = await prisma.category.create({
-    data: { name: "Chain" },
-  })
+  for (const name of REQUIRED_CATEGORIES) {
+    await prisma.category.upsert({
+      where: { name },
+      update: {},
+      create: { name },
+    })
+    console.log(`  ✓ ${name}`)
+  }
 
-  const winderCategory = await prisma.category.create({
-    data: { name: "Winder" },
-  })
-
-  const tubeCategory = await prisma.category.create({
-    data: { name: "Aluminium Tube" },
-  })
-
-  await prisma.item.createMany({
-    data: [
-      {
-        name: "Metal Chain",
-        quantity: 120,
-        minimumStock: 30,
-        unit: "pcs",
-        categoryId: chainCategory.id,
-      },
-      {
-        name: "Plastic Chain White",
-        quantity: 18,
-        minimumStock: 20,
-        unit: "pcs",
-        categoryId: chainCategory.id,
-      },
-      {
-        name: "White Winder",
-        quantity: 64,
-        minimumStock: 15,
-        unit: "pcs",
-        categoryId: winderCategory.id,
-      },
-      {
-        name: "45mm Aluminium Tube",
-        quantity: 0,
-        minimumStock: 10,
-        unit: "pcs",
-        categoryId: tubeCategory.id,
-      },
-    ],
-  })
+  console.log("Done. Existing data was not modified.")
 }
 
 main()

@@ -5,6 +5,7 @@ import type { CreateItemPayload } from "../types/createItemPayload"
 
 type ItemSettingsPayload = {
   stockType: "COUNT" | "LENGTH"
+  quantity?: number
   minimumStock?: number
   unit?: string
   defaultLengthMm?: number
@@ -83,6 +84,8 @@ export default function ManageItemsModal({
   const [newCategoryName, setNewCategoryName] = useState("")
   const [editingItemId, setEditingItemId] = useState<number | null>(null)
   const [editingName, setEditingName] = useState("")
+  const [editingStock, setEditingStock] = useState("")
+  const [editingMinStock, setEditingMinStock] = useState("")
 
   // Settings 편집 상태 (stockType 전환)
   const [settingsItemId, setSettingsItemId] = useState<number | null>(null)
@@ -351,16 +354,41 @@ export default function ManageItemsModal({
     }
   }
 
-  async function handleSaveEdit(itemId: number) {
+  async function handleSaveEdit(item: InventoryItem) {
     if (!editingName.trim()) return
 
     try {
-      await onUpdateItemName(itemId, editingName.trim())
+      if (editingName.trim() !== item.name) {
+        await onUpdateItemName(item.id, editingName.trim())
+      }
+
+      const stockVal = Number(editingStock)
+      const minStockVal = Number(editingMinStock)
+
+      if (item.stockType === "COUNT") {
+        await onUpdateItemSettings(item.id, {
+          stockType: "COUNT",
+          quantity: Number.isFinite(stockVal) ? stockVal : (item.quantity ?? 0),
+          minimumStock: Number.isFinite(minStockVal) ? minStockVal : (item.minimumStock ?? 0),
+          unit: item.unit ?? "pcs",
+        })
+      } else {
+        await onUpdateItemSettings(item.id, {
+          stockType: "LENGTH",
+          totalLengthMm: Number.isFinite(stockVal) ? stockVal : (item.totalLengthMm ?? 0),
+          minimumLengthMm: Number.isFinite(minStockVal) ? minStockVal : (item.minimumLengthMm ?? 0),
+          defaultLengthMm: item.defaultLengthMm ?? 4000,
+          cutoffLengthMm: item.cutoffLengthMm ?? 800,
+        })
+      }
+
       setEditingItemId(null)
       setEditingName("")
+      setEditingStock("")
+      setEditingMinStock("")
     } catch (err) {
       console.error(err)
-      alert("Failed to update item name.")
+      alert("Failed to update item.")
     }
   }
 
@@ -464,15 +492,49 @@ export default function ManageItemsModal({
                       <td className="px-4 py-3">
                         {item.stockType === "LENGTH" ? "Length" : "Count"}
                       </td>
-                      <td className="px-4 py-3">{renderCurrentStock(item)}</td>
-                      <td className="px-4 py-3">{renderMinimumStock(item)}</td>
+                      <td className="px-4 py-3">
+                        {editingItemId === item.id ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min="0"
+                              value={editingStock}
+                              onChange={(e) => setEditingStock(e.target.value)}
+                              className="w-24 rounded-lg border border-gray-300 px-2 py-1.5 text-sm outline-none focus:border-blue-500"
+                            />
+                            {item.stockType === "LENGTH" && (
+                              <span className="text-xs text-gray-400">mm</span>
+                            )}
+                          </div>
+                        ) : (
+                          renderCurrentStock(item)
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        {editingItemId === item.id ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              type="number"
+                              min="0"
+                              value={editingMinStock}
+                              onChange={(e) => setEditingMinStock(e.target.value)}
+                              className="w-24 rounded-lg border border-gray-300 px-2 py-1.5 text-sm outline-none focus:border-blue-500"
+                            />
+                            {item.stockType === "LENGTH" && (
+                              <span className="text-xs text-gray-400">mm</span>
+                            )}
+                          </div>
+                        ) : (
+                          renderMinimumStock(item)
+                        )}
+                      </td>
                       <td className="px-4 py-3">{renderUnit(item)}</td>
                       <td className="rounded-r-xl px-4 py-3">
                         <div className="flex gap-2">
                           {editingItemId === item.id ? (
                             <>
                               <button
-                                onClick={() => handleSaveEdit(item.id)}
+                                onClick={() => handleSaveEdit(item)}
                                 className="rounded-lg bg-blue-600 px-3 py-2 text-xs font-medium text-white hover:bg-blue-700"
                               >
                                 Save
@@ -481,6 +543,8 @@ export default function ManageItemsModal({
                                 onClick={() => {
                                   setEditingItemId(null)
                                   setEditingName("")
+                                  setEditingStock("")
+                                  setEditingMinStock("")
                                 }}
                                 className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
                               >
@@ -493,6 +557,16 @@ export default function ManageItemsModal({
                                 onClick={() => {
                                   setEditingItemId(item.id)
                                   setEditingName(item.name)
+                                  setEditingStock(
+                                    item.stockType === "LENGTH"
+                                      ? String(item.totalLengthMm ?? 0)
+                                      : String(item.quantity ?? 0)
+                                  )
+                                  setEditingMinStock(
+                                    item.stockType === "LENGTH"
+                                      ? String(item.minimumLengthMm ?? 0)
+                                      : String(item.minimumStock ?? 0)
+                                  )
                                 }}
                                 className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
                               >

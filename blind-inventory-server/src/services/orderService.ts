@@ -372,7 +372,7 @@ export async function confirmOrderDeduction(
       month,
       totalItems,
     }
-  })
+  }, { timeout: 30000 })
 
   return result
 }

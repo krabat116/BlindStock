@@ -248,6 +248,81 @@ export default function InventoryPage() {
     setOrderTotalItems(0)
   }
 
+  async function handleCreateMissingItems() {
+    const missingItems = orderPreview
+      .filter((item) => !item.matched)
+      .map((item) => ({ category: item.category, itemName: item.itemName }))
+
+    if (missingItems.length === 0) return
+
+    try {
+      setOrderPreviewLoading(true)
+      setOrderPreviewError("")
+
+      const res = await apiFetch("/items/bulk-create-missing", {
+        method: "POST",
+        body: JSON.stringify({ items: missingItems }),
+      })
+
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.message || "Failed to create missing items")
+      }
+
+      // Refresh inventory list and re-run preview so status updates to Ready
+      await fetchItems()
+      await handlePreviewUpload()
+    } catch (err) {
+      setOrderPreviewError(err instanceof Error ? err.message : "Failed to create missing items")
+      setOrderPreviewLoading(false)
+    }
+  }
+
+  async function handleFillInsufficientStock() {
+    const insufficientItems = orderPreview.filter((item) => {
+      if (!item.matched || item.itemId === null) return false
+      if (item.stockType === "LENGTH") {
+        return (item.currentLengthMm ?? 0) < (item.lengthMm ?? 0)
+      }
+      return (item.currentStock ?? 0) < item.quantity
+    })
+
+    if (insufficientItems.length === 0) return
+
+    try {
+      setOrderPreviewLoading(true)
+      setOrderPreviewError("")
+
+      for (const item of insufficientItems) {
+        if (item.itemId === null) continue
+
+        if (item.stockType === "LENGTH") {
+          const deficit = (item.lengthMm ?? 0) - (item.currentLengthMm ?? 0)
+          if (deficit <= 0) continue
+          const res = await apiFetch(`/items/${item.itemId}/stock`, {
+            method: "PATCH",
+            body: JSON.stringify({ totalLengthMm: deficit, note: "Topped up via order preview" }),
+          })
+          if (!res.ok) throw new Error(`Failed to top up stock for ${item.itemName}`)
+        } else {
+          const deficit = item.quantity - (item.currentStock ?? 0)
+          if (deficit <= 0) continue
+          const res = await apiFetch(`/items/${item.itemId}/stock`, {
+            method: "PATCH",
+            body: JSON.stringify({ quantity: deficit, note: "Topped up via order preview" }),
+          })
+          if (!res.ok) throw new Error(`Failed to top up stock for ${item.itemName}`)
+        }
+      }
+
+      await fetchItems()
+      await handlePreviewUpload()
+    } catch (err) {
+      setOrderPreviewError(err instanceof Error ? err.message : "Failed to fill insufficient stock")
+      setOrderPreviewLoading(false)
+    }
+  }
+
   async function handleBatchUpload() {
     if (!batchFiles.length || !batchYear || !batchMonth) return
 
@@ -593,6 +668,8 @@ export default function InventoryPage() {
                     onPreviewUpload={handlePreviewUpload}
                     onConfirmDeduction={handleConfirmDeduction}
                     onClearPreview={handleClearPreview}
+                    onCreateMissingItems={handleCreateMissingItems}
+                    onFillInsufficientStock={handleFillInsufficientStock}
                   />
                 ) : (
                   <BatchUploadPanel

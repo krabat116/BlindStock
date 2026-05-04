@@ -8,6 +8,9 @@
     "build": "tsc",
     "start": "prisma migrate deploy && node dist/index.js"
   },
+  "prisma": {
+    "seed": "tsx prisma/seed.ts"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
