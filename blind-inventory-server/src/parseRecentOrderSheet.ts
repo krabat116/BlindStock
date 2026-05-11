@@ -131,13 +131,19 @@ function parseBracketRow(
     const rawName = match[2].trim().replace(/\s+BRACK\w*\s*$/i, "").trim()
     if (!rawName) continue
 
-    // Always append BRACKET so names are consistent whether the Excel
-    // suffix was present, absent, or misspelled.
+    const upperName = rawName.toUpperCase()
+
+    // Combo brackets already carry a descriptive product name (e.g. "LHS SLIMLINE COMBOS BLACK")
+    // so appending "BRACKET" would be redundant. Standard colour-only brackets
+    // (e.g. "S WHITE") need the suffix to stay distinct from other colour-named items.
+    const isCombo = /COMBO/i.test(rawName)
+    const itemName = isCombo ? upperName : `${upperName} BRACKET`
+
     results.push({
       sourceRow: rowNumber,
       account,
       customerName,
-      itemName: `${rawName.toUpperCase()} BRACKET`,
+      itemName,
       quantity,
     })
   }
