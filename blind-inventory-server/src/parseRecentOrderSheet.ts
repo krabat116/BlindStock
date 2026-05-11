@@ -65,12 +65,12 @@ function normalizeChainType(chainTypeRaw: string) {
   }
 
   const chainTypeMap: Record<string, string> = {
-    M: "METAL CHAIN",
-    W: "WHITE CHAIN",
-    B: "BLACK CHAIN",
-    C: "CREAM CHAIN",
-    S: "STAINLESS CHAIN",
-    SS: "STAINLESS CHAIN",
+    M: "METAL",
+    W: "WHITE",
+    B: "BLACK",
+    C: "CREAM",
+    S: "STAINLESS",
+    SS: "STAINLESS",
   }
 
   return chainTypeMap[value] ?? value

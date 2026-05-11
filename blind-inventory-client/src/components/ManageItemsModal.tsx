@@ -144,9 +144,18 @@ export default function ManageItemsModal({
     }
   }, [isOpen, categories, initialSettingsItemId, items])
 
-  const sortedItems = useMemo(() => {
-    return [...items].sort((a, b) => a.name.localeCompare(b.name))
+  const [filterCategory, setFilterCategory] = useState<string>("All")
+
+  const categoryOptions = useMemo(() => {
+    const names = Array.from(new Set(items.map((i) => i.category))).sort()
+    return ["All", ...names]
   }, [items])
+
+  const sortedItems = useMemo(() => {
+    return [...items]
+      .filter((i) => filterCategory === "All" || i.category === filterCategory)
+      .sort((a, b) => a.name.localeCompare(b.name))
+  }, [items, filterCategory])
 
   const totalLengthMm = useMemo(() => {
     const parsedDefaultLengthMm = Number(defaultLengthMm)
@@ -481,7 +490,25 @@ export default function ManageItemsModal({
               </p>
             </div>
 
-            <div className="max-h-[460px] overflow-auto">
+            {/* Category filter */}
+            <div className="mb-3 flex flex-wrap gap-1.5">
+              {categoryOptions.map((cat) => (
+                <button
+                  key={cat}
+                  type="button"
+                  onClick={() => setFilterCategory(cat)}
+                  className={`rounded-full px-3 py-1 text-xs font-medium transition ${
+                    filterCategory === cat
+                      ? "bg-gray-800 text-white"
+                      : "bg-white border border-gray-200 text-gray-600 hover:bg-gray-100"
+                  }`}
+                >
+                  {cat}
+                </button>
+              ))}
+            </div>
+
+            <div className="max-h-105 overflow-auto">
               <table className="min-w-full border-separate border-spacing-y-2">
                 <thead>
                   <tr className="text-left text-sm text-gray-500">

@@ -68,16 +68,16 @@ export function buildFinishName(finish: string) {
  * Build the chain item name from the chain material type (col 16)
  * and the chain size extracted from col 14.
  *
- * col 16 (chainType, already normalised): "METAL CHAIN", "WHITE CHAIN", or ""
+ * col 16 (chainType, already normalised): "METAL", "WHITE", or ""
  * col 14 (operationRaw): numeric size, "SWIVEL NNN", or "MOTOR"
  *
  * Examples:
- *   chainType="METAL CHAIN", operationRaw="500"         → "METAL CHAIN 500"
- *   chainType="METAL CHAIN", operationRaw="1250"        → "METAL CHAIN 1250"
- *   chainType="METAL CHAIN", operationRaw="SWIVEL 1000" → "METAL CHAIN 1000"
- *   chainType="WHITE CHAIN", operationRaw="SWIVEL 750"  → "WHITE CHAIN 750"
- *   chainType=""                                         → "" (no chain)
- *   operationRaw="MOTOR"                                 → "" (no chain)
+ *   chainType="METAL", operationRaw="500"         → "METAL 500"
+ *   chainType="METAL", operationRaw="1250"        → "METAL 1250"
+ *   chainType="METAL", operationRaw="SWIVEL 1000" → "METAL 1000"
+ *   chainType="WHITE", operationRaw="SWIVEL 750"  → "WHITE 750"
+ *   chainType=""                                   → "" (no chain)
+ *   operationRaw="MOTOR"                           → "" (no chain)
  */
 export function buildChainName(chainType: string, operationRaw: string): string {
   // col 16 empty → no chain
@@ -103,7 +103,7 @@ export function buildChainName(chainType: string, operationRaw: string): string 
 
   if (!size || size <= 0) return chainType // fallback: chain type without size
 
-  return `${chainType} ${size}` // e.g. "METAL CHAIN 500", "WHITE CHAIN 750"
+  return `${chainType} ${size}` // e.g. "METAL 500", "WHITE 750"
 }
 
 /**
