@@ -36,8 +36,12 @@ export function buildWinderName(componentryColour: string, operationRaw: string)
 
   if (!colour) return ""
 
+  // Motor → no winder used (componentryColour is for pin only)
+  if (operationRaw.trim().toUpperCase() === "MOTOR") return ""
+
+  // SWIVEL operation → winder type is "SWIVEL" (e.g. "BLACK SWIVEL")
   if (isSwivelOperation(operationRaw)) {
-    return `${colour} WINDER`
+    return `${colour} SWIVEL`
   }
 
   return `${colour} WINDER`
@@ -60,8 +64,46 @@ export function buildFinishName(finish: string) {
   return `${colour} FINISH`
 }
 
-export function buildChainName(chainType: string) {
-  return chainType.trim().toUpperCase()
+/**
+ * Build the chain item name from the chain material type (col 16)
+ * and the chain size extracted from col 14.
+ *
+ * col 16 (chainType, already normalised): "METAL CHAIN", "WHITE CHAIN", or ""
+ * col 14 (operationRaw): numeric size, "SWIVEL NNN", or "MOTOR"
+ *
+ * Examples:
+ *   chainType="METAL CHAIN", operationRaw="500"         → "METAL CHAIN 500"
+ *   chainType="METAL CHAIN", operationRaw="1250"        → "METAL CHAIN 1250"
+ *   chainType="METAL CHAIN", operationRaw="SWIVEL 1000" → "METAL CHAIN 1000"
+ *   chainType="WHITE CHAIN", operationRaw="SWIVEL 750"  → "WHITE CHAIN 750"
+ *   chainType=""                                         → "" (no chain)
+ *   operationRaw="MOTOR"                                 → "" (no chain)
+ */
+export function buildChainName(chainType: string, operationRaw: string): string {
+  // col 16 empty → no chain
+  if (!chainType) return ""
+
+  const operation = operationRaw.trim().toUpperCase()
+
+  // Motor → no physical chain
+  if (operation === "MOTOR") return ""
+
+  // Extract numeric size:
+  // - Standard: operationRaw = "500", "1250"
+  // - Swivel:   operationRaw = "SWIVEL 1000" → extract 1000
+  let size: number | null = null
+
+  if (operation.startsWith("SWIVEL")) {
+    const match = operation.match(/SWIVEL\s+(\d+)/i)
+    size = match ? parseInt(match[1], 10) : null
+  } else {
+    const n = parseInt(operation, 10)
+    size = Number.isNaN(n) ? null : n
+  }
+
+  if (!size || size <= 0) return chainType // fallback: chain type without size
+
+  return `${chainType} ${size}` // e.g. "METAL CHAIN 500", "WHITE CHAIN 750"
 }
 
 /**
@@ -127,7 +169,7 @@ export function mapOrderRowToComponents(row: ParsedOrderRow): PreviewComponent[]
     })
   }
 
-  const chainName = buildChainName(row.chainType)
+  const chainName = buildChainName(row.chainType, row.operationRaw)
   if (chainName) {
     components.push({
       sourceRow: row.rowNumber,
