@@ -112,7 +112,8 @@ function parseBracketRow(
   rowNumber: number,
   account: string,
   customerName: string,
-  materialRaw: string
+  materialRaw: string,
+  fallbackColour: string = ""
 ): ParsedBracketComponent[] {
   const results: ParsedBracketComponent[] = []
 
@@ -137,7 +138,23 @@ function parseBracketRow(
     // so appending "BRACKET" would be redundant. Standard colour-only brackets
     // (e.g. "S WHITE") need the suffix to stay distinct from other colour-named items.
     const isCombo = /COMBO/i.test(rawName)
-    const itemName = isCombo ? upperName : `${upperName} BRACKET`
+
+    let itemName: string
+    if (isCombo) {
+      // If the combo name ends with "COMBO" or "COMBOS" (no colour appended by the admin),
+      // derive the colour from the last seen componentry colour on a blind row.
+      // "S WHITE" → strip leading "S " → "WHITE"; "S BLACK" → "BLACK"; "WHITE" → "WHITE"
+      const lastWord = upperName.split(/\s+/).pop() ?? ""
+      const missingColour = /^COMBOS?$/.test(lastWord)
+      if (missingColour && fallbackColour) {
+        const colourOnly = fallbackColour.trim().replace(/^S\s+/i, "").toUpperCase()
+        itemName = `${upperName} ${colourOnly}`
+      } else {
+        itemName = upperName
+      }
+    } else {
+      itemName = `${upperName} BRACKET`
+    }
 
     results.push({
       sourceRow: rowNumber,
@@ -231,6 +248,10 @@ export function parseRecentOrderSheet(buffer: Buffer): ParsedOrderSheetResult {
   const parsedRows: ParsedOrderRow[] = []
   const bracketComponents: ParsedBracketComponent[] = []
 
+  // Track the most recent componentry colour seen on a blind row.
+  // Used as fallback when a bracket/combo row has no colour in its material text.
+  let lastComponentryColour = ""
+
   normalizedRows.forEach((row, index) => {
     const account = toText(getValueByAliases(row, columnAliases.account))
     const customerName = toText(
@@ -256,7 +277,7 @@ export function parseRecentOrderSheet(buffer: Buffer): ParsedOrderSheetResult {
     if (!blindNo && /\d+\s*[Xx]\s+/i.test(materialRange)) {
       const rowNumber = index + 7
       bracketComponents.push(
-        ...parseBracketRow(rowNumber, account, customerName, materialRange)
+        ...parseBracketRow(rowNumber, account, customerName, materialRange, lastComponentryColour)
       )
       return
     }
@@ -267,6 +288,9 @@ export function parseRecentOrderSheet(buffer: Buffer): ParsedOrderSheetResult {
     const componentryColour = toText(
       getValueByAliases(row, columnAliases.componentryColour)
     )
+    // Keep track of the latest componentry colour for bracket fallback
+    if (componentryColour) lastComponentryColour = componentryColour
+
     const chainTypeRaw = toText(getValueByAliases(row, columnAliases.chainType))
     const operationRaw = toText(
       getValueByAliases(row, columnAliases.operationRaw)
