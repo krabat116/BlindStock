@@ -109,7 +109,9 @@ export default function CustomerDetailPage() {
   const [customer, setCustomer] = useState<CustomerDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState("")
+  const [expandedYears, setExpandedYears] = useState<Set<number>>(new Set())
   const [expandedMonths, setExpandedMonths] = useState<Set<string>>(new Set())
+  const [selectedYear, setSelectedYear] = useState<number | null>(null)
 
   useEffect(() => {
     async function fetchCustomerDetail() {
@@ -137,29 +139,56 @@ export default function CustomerDetailPage() {
     if (id) fetchCustomerDetail()
   }, [id])
 
-  // ── Chart data: aggregate by month, last 12 months ──
+  // ── Unique years from order history (descending) ──
+  const years = useMemo(() => {
+    if (!customer) return []
+    const set = new Set(customer.orders.map((o) => o.year))
+    return Array.from(set).sort((a, b) => b - a)
+  }, [customer])
+
+  // ── Auto-expand most recent year on load ──
+  useEffect(() => {
+    if (years.length > 0) {
+      setExpandedYears(new Set([years[0]]))
+    }
+  }, [years])
+
+  // ── Chart data: all years or filtered by selectedYear ──
   const chartData = useMemo(() => {
     if (!customer) return []
 
-    const map = new Map<
-      string,
-      { label: string; blinds: number; orders: number }
-    >()
-
-    for (const order of customer.orders) {
-      const key = `${order.year}-${String(order.month).padStart(2, "0")}`
-      const label = `${MONTH_NAMES[order.month - 1]} '${String(order.year).slice(2)}`
-      const existing = map.get(key) ?? { label, blinds: 0, orders: 0 }
-      existing.blinds += order.totalItems
-      existing.orders += 1
-      map.set(key, existing)
+    if (selectedYear !== null) {
+      // Single year: always show all 12 months (fill empty months with 0)
+      const monthly = new Array(12).fill(0).map((_, i) => ({
+        label: MONTH_NAMES[i],
+        blinds: 0,
+        orders: 0,
+      }))
+      for (const order of customer.orders) {
+        if (order.year !== selectedYear) continue
+        const m = order.month - 1
+        monthly[m].blinds += order.totalItems
+        monthly[m].orders += 1
+      }
+      return monthly
     }
 
+    // All time: one bar per year
+    const map = new Map<number, { label: string; blinds: number; orders: number }>()
+    for (const order of customer.orders) {
+      const existing = map.get(order.year) ?? {
+        label: String(order.year),
+        blinds: 0,
+        orders: 0,
+      }
+      existing.blinds += order.totalItems
+      existing.orders += 1
+      map.set(order.year, existing)
+    }
     return Array.from(map.entries())
-      .sort(([a], [b]) => a.localeCompare(b))
-      .slice(-12)
+      .sort(([a], [b]) => a - b)
       .map(([, v]) => v)
-  }, [customer])
+  }, [customer, selectedYear])
 
   // ── Order history: group by year → month ──
   const groupedOrders = useMemo(() => {
@@ -187,6 +216,15 @@ export default function CustomerDetailPage() {
           })),
       }))
   }, [customer])
+
+  function toggleYear(year: number) {
+    setExpandedYears((prev) => {
+      const next = new Set(prev)
+      if (next.has(year)) next.delete(year)
+      else next.add(year)
+      return next
+    })
+  }
 
   function toggleMonth(key: string) {
     setExpandedMonths((prev) => {
@@ -266,7 +304,30 @@ export default function CustomerDetailPage() {
 
         {/* Monthly chart */}
         {chartData.length > 0 && (
-          <Section title="Monthly blinds (last 12 months)">
+          <Section>
+            {/* Chart header with year selector */}
+            <div className="flex items-center justify-between border-b border-gray-100 px-5 py-3">
+              <h2 className="text-sm font-medium text-gray-800">
+                Monthly blinds
+                {selectedYear !== null ? ` — ${selectedYear}` : " — All time"}
+              </h2>
+              <select
+                value={selectedYear ?? "all"}
+                onChange={(e) =>
+                  setSelectedYear(
+                    e.target.value === "all" ? null : Number(e.target.value)
+                  )
+                }
+                className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+              >
+                <option value="all">All time</option>
+                {years.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </div>
             <div className="px-2 py-5">
               <ResponsiveContainer width="100%" height={220}>
                 <BarChart
@@ -305,6 +366,7 @@ export default function CustomerDetailPage() {
             </div>
           </Section>
         )}
+
 
         {/* Customer information */}
         <Section title="Customer information">
@@ -358,16 +420,35 @@ export default function CustomerDetailPage() {
             </p>
           ) : (
             <div className="divide-y divide-gray-100">
-              {groupedOrders.map(({ year, months }) => (
-                <div key={year}>
-                  {/* Year header */}
-                  <div className="bg-gray-50 px-5 py-2">
-                    <span className="text-xs font-semibold uppercase tracking-wider text-gray-500">
-                      {year}
-                    </span>
-                  </div>
+              {groupedOrders.map(({ year, months }) => {
+                const yearExpanded = expandedYears.has(year)
+                const yearTotalBlinds = months.reduce((s, m) => s + m.totalItems, 0)
+                const yearTotalOrders = months.reduce((s, m) => s + m.orders.length, 0)
 
-                  {months.map(({ month, orders, totalItems }) => {
+                return (
+                <div key={year}>
+                  {/* Year header — click to expand/collapse */}
+                  <button
+                    onClick={() => toggleYear(year)}
+                    className="flex w-full items-center justify-between bg-gray-50 px-5 py-2.5 hover:bg-gray-100 transition-colors text-left"
+                  >
+                    <div className="flex items-center gap-5">
+                      <span className="text-xs font-semibold uppercase tracking-wider text-gray-600">
+                        {year}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {yearTotalOrders} order{yearTotalOrders !== 1 ? "s" : ""}
+                      </span>
+                      <span className="text-xs text-gray-400">
+                        {yearTotalBlinds} blind{yearTotalBlinds !== 1 ? "s" : ""}
+                      </span>
+                    </div>
+                    <span className="text-gray-300 text-xs">
+                      {yearExpanded ? "▲" : "▼"}
+                    </span>
+                  </button>
+
+                  {yearExpanded && months.map(({ month, orders, totalItems }) => {
                     const key = `${year}-${month}`
                     const isExpanded = expandedMonths.has(key)
 
@@ -441,7 +522,8 @@ export default function CustomerDetailPage() {
                     )
                   })}
                 </div>
-              ))}
+              )
+              })}
             </div>
           )}
         </Section>

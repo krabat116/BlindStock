@@ -6,6 +6,7 @@ type AddStockModalProps = {
   item: InventoryItem | null
   onClose: () => void
   onSave: (itemId: number, value: number, note: string) => Promise<void>
+  onGoToSettings?: () => void
 }
 
 export default function AddStockModal({
@@ -13,6 +14,7 @@ export default function AddStockModal({
   item,
   onClose,
   onSave,
+  onGoToSettings,
 }: AddStockModalProps) {
   // COUNT 타입용
   const [quantity, setQuantity] = useState("")
@@ -148,7 +150,18 @@ export default function AddStockModal({
 
                 {!item.defaultLengthMm && (
                   <p className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-700">
-                    Default length per stick is not set. Go to Manage items → Settings to configure it first.
+                    Default length per stick is not set.{" "}
+                    {onGoToSettings ? (
+                      <button
+                        type="button"
+                        onClick={onGoToSettings}
+                        className="underline font-medium hover:text-amber-900"
+                      >
+                        Go to Settings
+                      </button>
+                    ) : (
+                      "Go to Manage items → Settings to configure it first."
+                    )}
                   </p>
                 )}
 

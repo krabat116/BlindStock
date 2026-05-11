@@ -698,6 +698,10 @@ export default function InventoryPage() {
         item={selectedItem}
         onClose={handleCloseAddStockModal}
         onSave={handleSaveStock}
+        onGoToSettings={() => {
+          setIsAddStockModalOpen(false)
+          setIsManageItemsModalOpen(true)
+        }}
       />
 
       <AdjustStockModal
@@ -711,7 +715,11 @@ export default function InventoryPage() {
         isOpen={isManageItemsModalOpen}
         items={items}
         categories={categories}
-        onClose={() => setIsManageItemsModalOpen(false)}
+        onClose={() => {
+          setIsManageItemsModalOpen(false)
+          setSelectedItem(null)
+        }}
+        initialSettingsItemId={selectedItem?.id ?? null}
         onCreateItem={handleCreateItem}
         onCreateCategory={handleCreateCategory}
         onUpdateItemName={handleUpdateItemName}

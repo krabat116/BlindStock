@@ -25,6 +25,7 @@ type ManageItemsModalProps = {
   onUpdateItemSettings: (itemId: number, payload: ItemSettingsPayload) => Promise<void>
   onDeleteItem: (itemId: number) => Promise<void>
   onOpenEditCategories: () => void
+  initialSettingsItemId?: number | null
 }
 
 type StockTypeTab = "COUNT" | "LENGTH"
@@ -46,6 +47,7 @@ export default function ManageItemsModal({
   onUpdateItemSettings,
   onDeleteItem,
   onOpenEditCategories,
+  initialSettingsItemId,
 }: ManageItemsModalProps) {
   const [selectedCategoryId, setSelectedCategoryId] = useState<number>(
     categories[0]?.id ?? 0
@@ -116,8 +118,31 @@ export default function ManageItemsModal({
       const countCats = categories.filter((c) => !isLengthCategory(c.name))
       setSelectedCategoryId(countCats.length > 0 ? countCats[0].id : categories[0].id)
       setStockTypeTab("COUNT")
+
+      if (initialSettingsItemId != null) {
+        const item = items.find((i) => i.id === initialSettingsItemId)
+        if (item) {
+          setSettingsItemId(item.id)
+          setSettingsStockType(item.stockType)
+          setSettingsError("")
+          if (item.stockType === "LENGTH") {
+            setSettingsDefaultLengthMm(String(item.defaultLengthMm ?? 4000))
+            const defaultLen = item.defaultLengthMm ?? 4000
+            const currentTotal = item.totalLengthMm ?? 0
+            setSettingsStickCount(defaultLen > 0 ? String(Math.round(currentTotal / defaultLen)) : "0")
+            setSettingsMinimumLengthMm(String(item.minimumLengthMm ?? 0))
+            setSettingsCutoffLengthMm(String(item.cutoffLengthMm ?? 800))
+          } else {
+            setSettingsMinimumStock(String(item.minimumStock ?? 0))
+            setSettingsUnit(item.unit ?? "pcs")
+            setSettingsDefaultLengthMm("4000")
+            setSettingsStickCount("0")
+            setSettingsMinimumLengthMm("0")
+          }
+        }
+      }
     }
-  }, [isOpen, categories])
+  }, [isOpen, categories, initialSettingsItemId, items])
 
   const sortedItems = useMemo(() => {
     return [...items].sort((a, b) => a.name.localeCompare(b.name))
