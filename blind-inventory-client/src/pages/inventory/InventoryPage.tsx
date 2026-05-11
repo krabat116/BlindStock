@@ -554,7 +554,7 @@ export default function InventoryPage() {
   // ── Render ─────────────────────────────────
   return (
     <main className="min-h-screen bg-gray-50 p-6">
-      <div className="mx-auto max-w-5xl space-y-5">
+      <div className="mx-auto max-w-7xl space-y-5">
 
         {/* Page header */}
         <div>

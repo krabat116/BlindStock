@@ -97,11 +97,11 @@ export default function InventoryTable({
 
   return (
     <div className="overflow-x-auto">
-      <table className="min-w-full border-separate border-spacing-y-1">
+      <table className="w-full table-fixed border-separate border-spacing-y-1">
         <thead>
           <tr className="text-left">
-            <th className="px-5 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">Item name</th>
-            <th className="px-5 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+            <th className="w-[28%] px-5 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">Item name</th>
+            <th className="w-[17%] px-5 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
               <FilterDropdown label="Category" active={!!categoryFilter}>
                 {(close) => (
                   <>
@@ -115,10 +115,10 @@ export default function InventoryTable({
                 )}
               </FilterDropdown>
             </th>
-            <th className="px-5 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">Stock</th>
-            <th className="px-5 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">Min stock</th>
-            <th className="px-5 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">Unit</th>
-            <th className="px-5 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+            <th className="w-[14%] px-5 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">Stock</th>
+            <th className="w-[14%] px-5 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">Min stock</th>
+            <th className="w-[7%] px-5 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">Unit</th>
+            <th className="w-[12%] px-5 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
               <FilterDropdown label="Status" active={!!statusFilter}>
                 {(close) => (
                   <>
@@ -130,7 +130,7 @@ export default function InventoryTable({
                 )}
               </FilterDropdown>
             </th>
-            <th className="px-5 py-2 text-xs font-medium uppercase tracking-wide text-gray-400"></th>
+            <th className="w-[8%] px-5 py-2 text-xs font-medium uppercase tracking-wide text-gray-400"></th>
           </tr>
         </thead>
 
@@ -147,7 +147,7 @@ export default function InventoryTable({
                 <td className="rounded-l-lg px-5 py-3 font-medium text-gray-900">
                   {item.name}
                 </td>
-                <td className="px-5 py-3 text-gray-500">{item.category}</td>
+                <td className="whitespace-nowrap px-5 py-3 text-gray-500">{item.category}</td>
                 <td className="px-5 py-3">
                   {item.stockType === "LENGTH"
                     ? item.totalLengthMm != null
@@ -163,7 +163,7 @@ export default function InventoryTable({
                     : item.minimumStock}
                 </td>
                 <td className="px-5 py-3 text-gray-500">{item.unit}</td>
-                <td className="px-5 py-3">
+                <td className="whitespace-nowrap px-5 py-3">
                   <StockStatusBadge status={getStockStatus(item)} />
                 </td>
                 <td className="rounded-r-lg px-5 py-3">
