@@ -24,8 +24,11 @@ export function normalizeCategoryName(value: string) {
     CHAINS: "CHAIN",
     FINISH: "FINISH",
     FINISHES: "FINISH",
-    TUBE: "ALUMINIUM TUBES"
-    
+    TUBE: "ALUMINIUM TUBES",
+    BRACKET: "BRACKETS",
+    BRACKETS: "BRACKETS",
+    CAP: "CAP",
+    CAPS: "CAP",
   }
 
   return categoryMap[normalized] ?? normalized

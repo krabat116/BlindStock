@@ -688,13 +688,14 @@ export async function bulkCreateMissingItems(
   for (const { category, itemName } of items) {
     const normalizedCategory = normalizeCategoryName(category)
 
-    const dbCategory = await prisma.category.findFirst({
+    let dbCategory = await prisma.category.findFirst({
       where: { name: normalizedCategory },
     })
 
     if (!dbCategory) {
-      skipped++
-      continue
+      dbCategory = await prisma.category.create({
+        data: { name: normalizedCategory },
+      })
     }
 
     // Skip if item already exists (case-insensitive, checked in JS)

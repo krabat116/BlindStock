@@ -21,7 +21,7 @@ export type ParsedOrderRow = {
 
 export type PreviewComponent = {
   sourceRow: number
-  category: "Finish" | "Winder" | "Pin" | "Chain" | "Tube"
+  category: "Finish" | "Winder" | "Pin" | "Chain" | "Tube" | "Bracket" | "Cap"
   itemName: string
   quantity: number
   lengthMm?: number // LENGTH 타입 부품(튜브 등)의 차감할 총 길이(mm)
@@ -55,7 +55,9 @@ export function buildPinName(componentryColour: string) {
 }
 
 export function buildFinishName(finish: string) {
-  return finish.trim().toUpperCase()
+  const colour = finish.trim().toUpperCase()
+  if (!colour) return ""
+  return `${colour} FINISH`
 }
 
 export function buildChainName(chainType: string) {
@@ -101,6 +103,7 @@ export function mapOrderRowToComponents(row: ParsedOrderRow): PreviewComponent[]
   const components: PreviewComponent[] = []
   const qty = row.qty > 0 ? row.qty : 1
 
+  const finishColour = row.finish.trim().toUpperCase()
   const finishName = buildFinishName(row.finish)
   if (finishName) {
     components.push({
@@ -112,6 +115,15 @@ export function mapOrderRowToComponents(row: ParsedOrderRow): PreviewComponent[]
       ...(typeof row.width === "number" && !Number.isNaN(row.width)
         ? { lengthMm: row.width * qty }
         : {}),
+    })
+
+    // Cap: 레일 양 끝을 막는 캡, 블라인드 1개당 2개 (양쪽 각 1개)
+    // 색상만 사용 ("WHITE CAP", not "WHITE FINISH CAP")
+    components.push({
+      sourceRow: row.rowNumber,
+      category: "Cap",
+      itemName: `${finishColour} CAP`,
+      quantity: qty * 2,
     })
   }
 

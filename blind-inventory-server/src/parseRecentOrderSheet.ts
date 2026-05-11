@@ -3,11 +3,20 @@ import type { ParsedOrderRow } from "./orderMapping"
 
 type RawRow = Record<string, unknown>
 
+export type ParsedBracketComponent = {
+  sourceRow: number
+  account: string
+  customerName: string
+  itemName: string
+  quantity: number
+}
+
 export type ParsedOrderSheetResult = {
   orderSheetNo: number | null
   accountName: string
   totalItems: number
   rows: ParsedOrderRow[]
+  bracketComponents: ParsedBracketComponent[]
 }
 
 const columnAliases = {
@@ -94,6 +103,48 @@ function buildHeadersFromTwoRows(row1: unknown[], row2: unknown[]) {
   })
 }
 
+/**
+ * Parse a bracket row's material cell into individual bracket components.
+ * Example input: "2X S WHITE, 2X S BLACK BRACKETS"
+ * → [{ itemName: "S WHITE", quantity: 2 }, { itemName: "S BLACK", quantity: 2 }]
+ */
+function parseBracketRow(
+  rowNumber: number,
+  account: string,
+  customerName: string,
+  materialRaw: string
+): ParsedBracketComponent[] {
+  const results: ParsedBracketComponent[] = []
+
+  const parts = materialRaw.split(",")
+
+  for (const part of parts) {
+    const trimmed = part.trim()
+    const match = trimmed.match(/^(\d+)\s*[Xx]\s+(.+)$/i)
+    if (!match) continue
+
+    const quantity = parseInt(match[1], 10)
+    if (!quantity || quantity <= 0) continue
+
+    // Strip any word starting with "BRACK" at the end.
+    // Handles BRACKET, BRACKETS, and typos like BRACKTES.
+    const rawName = match[2].trim().replace(/\s+BRACK\w*\s*$/i, "").trim()
+    if (!rawName) continue
+
+    // Always append BRACKET so names are consistent whether the Excel
+    // suffix was present, absent, or misspelled.
+    results.push({
+      sourceRow: rowNumber,
+      account,
+      customerName,
+      itemName: `${rawName.toUpperCase()} BRACKET`,
+      quantity,
+    })
+  }
+
+  return results
+}
+
 function extractOrderSheetNo(rows: unknown[][]): number | null {
   for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
     const row = rows[rowIndex] ?? []
@@ -172,6 +223,7 @@ export function parseRecentOrderSheet(buffer: Buffer): ParsedOrderSheetResult {
   console.log("🧾 First normalized row:", normalizedRows[0])
 
   const parsedRows: ParsedOrderRow[] = []
+  const bracketComponents: ParsedBracketComponent[] = []
 
   normalizedRows.forEach((row, index) => {
     const account = toText(getValueByAliases(row, columnAliases.account))
@@ -193,6 +245,15 @@ export function parseRecentOrderSheet(buffer: Buffer): ParsedOrderSheetResult {
     const materialRange = toText(
       getValueByAliases(row, columnAliases.material)
     )
+
+    // Detect bracket rows: no blind number, but material cell has an "NxX ..." pattern
+    if (!blindNo && /\d+\s*[Xx]\s+/i.test(materialRange)) {
+      const rowNumber = index + 7
+      bracketComponents.push(
+        ...parseBracketRow(rowNumber, account, customerName, materialRange)
+      )
+      return
+    }
     const materialColour = toText(
       getValueByAliases(row, columnAliases.materialColour)
     )
@@ -260,6 +321,7 @@ return {
   accountName,
   totalItems,
   rows: parsedRows,
+  bracketComponents,
 }
 
 

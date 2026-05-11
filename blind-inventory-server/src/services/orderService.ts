@@ -1,6 +1,6 @@
 import prisma from "../lib/prisma"
 import { parseRecentOrderSheet } from "../parseRecentOrderSheet"
-import { mapOrderRowToComponents } from "../orderMapping"
+import { mapOrderRowToComponents, type PreviewComponent } from "../orderMapping"
 import {
   normalizeCategoryName,
   normalizeItemName,
@@ -37,6 +37,17 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
   const parsed = parseRecentOrderSheet(fileBuffer)
   const flatComponents = parsed.rows.flatMap(mapOrderRowToComponents)
 
+  // Convert bracket components (from MATERIAL rows with no BLIND NO) into
+  // the same PreviewComponent shape so they flow through the same aggregation
+  const bracketPreviewComponents: PreviewComponent[] = parsed.bracketComponents.map((bc) => ({
+    sourceRow: bc.sourceRow,
+    category: "Bracket" as const,
+    itemName: bc.itemName,
+    quantity: bc.quantity,
+  }))
+
+  const allComponents = [...flatComponents, ...bracketPreviewComponents]
+
   const aggregatedMap = new Map<
     string,
     {
@@ -48,7 +59,7 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
     }
   >()
 
-  for (const component of flatComponents) {
+  for (const component of allComponents) {
     const key = `${component.category}::${component.itemName}`
 
     if (!aggregatedMap.has(key)) {
