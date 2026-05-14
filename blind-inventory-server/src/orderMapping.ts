@@ -9,6 +9,10 @@ export type ParsedOrderRow = {
   componentryColour: string
   chainType: string
   operationRaw: string
+  /** col 15: "L" or "R" — used for Spring Assist direction */
+  sideWdr: string
+  /** col 11: "OR" if open-roll — reverses Spring Assist direction */
+  roll: string
   qty: number
 
   /**
@@ -21,7 +25,7 @@ export type ParsedOrderRow = {
 
 export type PreviewComponent = {
   sourceRow: number
-  category: "Finish" | "Winder" | "Pin" | "Chain" | "Tube" | "Bracket" | "Cap"
+  category: "Finish" | "Winder" | "Pin" | "Chain" | "Tube" | "Bracket" | "Cap" | "Spring Assist"
   itemName: string
   quantity: number
   lengthMm?: number // LENGTH 타입 부품(튜브 등)의 차감할 총 길이(mm)
@@ -96,6 +100,10 @@ export function buildChainName(chainType: string, operationRaw: string): string 
   if (operation.startsWith("SWIVEL")) {
     const match = operation.match(/SWIVEL\s+(\d+)/i)
     size = match ? parseInt(match[1], 10) : null
+  } else if (operation.startsWith("SA")) {
+    // "SA 1250" → Spring Assist + chain size 1250
+    const match = operation.match(/SA\s+(\d+)/i)
+    size = match ? parseInt(match[1], 10) : null
   } else {
     const n = parseInt(operation, 10)
     size = Number.isNaN(n) ? null : n
@@ -104,6 +112,85 @@ export function buildChainName(chainType: string, operationRaw: string): string 
   if (!size || size <= 0) return chainType // fallback: chain type without size
 
   return `${chainType} ${size}` // e.g. "METAL 500", "WHITE 750"
+}
+
+/**
+ * Returns true when col 14 indicates a Spring Assist is attached.
+ * Pattern: "SA NNN" (e.g. "SA 1250")
+ */
+export function isSpringAssistOperation(operationRaw: string): boolean {
+  return /^SA\s+\d+/i.test(operationRaw.trim())
+}
+
+/**
+ * Spring Assist size guide (from Shadelite Spring Assist Guide chart).
+ *
+ * Format: [minWidth, minDrop]
+ * Sorted descending by minWidth — first matching row wins.
+ *
+ * WIDTH range   | min DROP for SA
+ * 3011+         | 0    (any drop)
+ * 2861 – 3010   | 1001
+ * 2711 – 2860   | 1201
+ * 2561 – 2710   | 1501
+ * 2411 – 2560   | 1801
+ * 2261 – 2410   | 2101
+ * ≤ 2260        | never (no rule)
+ */
+const SA_SIZE_RULES: Array<[number, number]> = [
+  [3011, 0],
+  [2861, 1001],
+  [2711, 1201],
+  [2561, 1501],
+  [2411, 1801],
+  [2261, 2101],
+]
+
+/**
+ * Returns true when the blind's width & drop fall in the Spring Assist
+ * required zone according to the size guide chart.
+ */
+export function requiresSpringAssistBySize(
+  width: number | null,
+  drop: number | null
+): boolean {
+  if (width === null || drop === null || width <= 0 || drop <= 0) return false
+  for (const [minWidth, minDrop] of SA_SIZE_RULES) {
+    if (width >= minWidth) return drop >= minDrop
+  }
+  return false
+}
+
+/**
+ * Build the Spring Assist item name.
+ *
+ * Rules:
+ *  - componentryColour starts with "S " (e.g. "S WHITE", "S BLACK")
+ *      → "S SPRING ASSIST"  (no direction — S-type uses built-in spring)
+ *  - plain colour (e.g. "BIRCH", "WHITE")
+ *      → direction from sideWdr ("L" = LEFT, "R" = RIGHT)
+ *      → if roll === "OR" the direction is reversed
+ *      → "SPRING ASSIST LEFT" or "SPRING ASSIST RIGHT"
+ */
+export function buildSpringAssistName(
+  componentryColour: string,
+  sideWdr: string,
+  roll: string
+): string {
+  const colour = componentryColour.trim().toUpperCase()
+  const side = sideWdr.trim().toUpperCase()
+  const rollVal = roll.trim().toUpperCase()
+
+  // S-prefix colour → no direction needed
+  if (colour.startsWith("S ")) {
+    return "S SPRING ASSIST"
+  }
+
+  // Plain colour → derive direction, reversed by OR roll
+  let isLeft = side === "L"
+  if (rollVal === "OR") isLeft = !isLeft
+
+  return isLeft ? "SPRING ASSIST LEFT" : "SPRING ASSIST RIGHT"
 }
 
 /**
@@ -141,6 +228,15 @@ export function getTubeItemName(width: number, tubeOverride?: string | null) {
   return "HD TUBE"
 }
 
+/**
+ * Some finish colours share a cap with a different-named finish.
+ * Key: finish colour (uppercase), Value: cap colour to use instead.
+ * e.g. SAHARA finish → BLACK CAP (not SAHARA CAP)
+ */
+const CAP_COLOUR_OVERRIDES: Record<string, string> = {
+  SAHARA: "BLACK",
+}
+
 export function mapOrderRowToComponents(row: ParsedOrderRow): PreviewComponent[] {
   const components: PreviewComponent[] = []
   const qty = row.qty > 0 ? row.qty : 1
@@ -161,10 +257,12 @@ export function mapOrderRowToComponents(row: ParsedOrderRow): PreviewComponent[]
 
     // Cap: 레일 양 끝을 막는 캡, 블라인드 1개당 2개 (양쪽 각 1개)
     // 색상만 사용 ("WHITE CAP", not "WHITE FINISH CAP")
+    // Some finishes share a cap colour — see CAP_COLOUR_OVERRIDES above.
+    const capColour = CAP_COLOUR_OVERRIDES[finishColour] ?? finishColour
     components.push({
       sourceRow: row.rowNumber,
       category: "Cap",
-      itemName: `${finishColour} CAP`,
+      itemName: `${capColour} CAP`,
       quantity: qty * 2,
     })
   }
@@ -175,6 +273,26 @@ export function mapOrderRowToComponents(row: ParsedOrderRow): PreviewComponent[]
       sourceRow: row.rowNumber,
       category: "Chain",
       itemName: chainName,
+      quantity: qty,
+    })
+  }
+
+  // Spring Assist: triggered either by explicit "SA NNN" in operation column
+  // or by width/drop falling in the Spring Assist size guide chart.
+  const needsSpringAssist =
+    isSpringAssistOperation(row.operationRaw) ||
+    requiresSpringAssistBySize(row.width, row.drop)
+
+  if (needsSpringAssist) {
+    const springAssistName = buildSpringAssistName(
+      row.componentryColour,
+      row.sideWdr,
+      row.roll
+    )
+    components.push({
+      sourceRow: row.rowNumber,
+      category: "Spring Assist",
+      itemName: springAssistName,
       quantity: qty,
     })
   }

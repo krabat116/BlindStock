@@ -184,7 +184,13 @@ export default function OrderUploadPanel({
               </thead>
 
               <tbody className="divide-y divide-gray-100">
-                {preview.map((item, index) => {
+                {[...preview]
+                  .sort((a, b) =>
+                    a.category !== b.category
+                      ? a.category.localeCompare(b.category)
+                      : a.itemName.localeCompare(b.itemName)
+                  )
+                  .map((item, index) => {
                   const status = getPreviewStatus(item)
                   const isLength = item.stockType === "LENGTH"
 

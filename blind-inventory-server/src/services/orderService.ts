@@ -86,6 +86,10 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
     },
   })
 
+  // Categories that are always LENGTH type — used to infer stockType
+  // for items not yet in the database (missing items).
+  const LENGTH_CATEGORIES = new Set(["Finish", "Tube"])
+
   const preview = aggregatedComponents.map((component) => {
     const matchedItem = dbItems.find(
       (item) =>
@@ -93,6 +97,10 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
         normalizeCategoryName(item.category.name) ===
           normalizeCategoryName(component.category)
     )
+
+    const inferredStockType = LENGTH_CATEGORIES.has(component.category)
+      ? "LENGTH"
+      : "COUNT"
 
     return {
       category: component.category,
@@ -102,7 +110,7 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
       lengthMm: component.totalLengthMm > 0 ? component.totalLengthMm : null,
       sourceRows: component.sourceRows,
       matched: Boolean(matchedItem),
-      stockType: matchedItem?.stockType ?? "COUNT",
+      stockType: matchedItem?.stockType ?? inferredStockType,
       currentStock: matchedItem?.quantity ?? null,
       currentLengthMm: matchedItem?.totalLengthMm ?? null,
       itemId: matchedItem?.id ?? null,
@@ -386,4 +394,30 @@ export async function confirmOrderDeduction(
   }, { timeout: 30000 })
 
   return result
+}
+
+/**
+ * GET /orders/stats
+ * Returns all CustomerOrders with year, month, totalItems for factory-wide charting
+ */
+export async function getOrderStats() {
+  const orders = await prisma.customerOrder.findMany({
+    select: {
+      orderYear: true,
+      orderMonth: true,
+      totalItems: true,
+    },
+    orderBy: [
+      { orderYear: "asc" },
+      { orderMonth: "asc" },
+    ],
+  })
+
+  return {
+    orders: orders.map((o) => ({
+      year: o.orderYear,
+      month: o.orderMonth,
+      totalItems: o.totalItems,
+    })),
+  }
 }

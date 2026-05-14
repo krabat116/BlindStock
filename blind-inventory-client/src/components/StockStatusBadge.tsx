@@ -26,7 +26,7 @@ export default function StockStatusBadge({
 
   return (
     <span
-      className={`inline-flex whitespace-nowrap rounded-full px-3 py-1 text-xs font-semibold ${config.className}`}
+      className={`inline-flex rounded-full px-3 py-1 text-xs font-semibold ${config.className}`}
     >
       {config.label}
     </span>

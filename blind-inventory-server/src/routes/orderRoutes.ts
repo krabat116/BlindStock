@@ -3,6 +3,7 @@ import multer from "multer"
 import {
   previewOrderUpload,
   confirmOrderDeduction,
+  getOrderStats,
 } from "../services/orderService"
 
 const router = express.Router()
@@ -12,6 +13,20 @@ const router = express.Router()
  * can be parsed directly from req.file.buffer
  */
 const upload = multer({ storage: multer.memoryStorage() })
+
+/**
+ * GET /orders/stats
+ * Return factory-wide order summaries (year, month, totalItems per order)
+ */
+router.get("/stats", async (_req, res) => {
+  try {
+    const stats = await getOrderStats()
+    res.json(stats)
+  } catch (error) {
+    console.error("Failed to fetch order stats:", error)
+    res.status(500).json({ message: "Failed to fetch order stats" })
+  }
+})
 
 /**
  * POST /orders/preview

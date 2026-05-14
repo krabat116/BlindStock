@@ -1,7 +1,21 @@
-import { useEffect, useMemo, useState } from "react"
+import { useEffect, useMemo, useState, type FormEvent } from "react"
 import { Link } from "react-router-dom"
 import { apiFetch } from "../../lib/api"
 import { useAuth } from "../../contexts/AuthContext"
+import {
+  BarChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  ResponsiveContainer,
+} from "recharts"
+
+const MONTH_NAMES = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+]
 
 type Customer = {
   id: string
@@ -26,6 +40,12 @@ type CustomerFormData = {
   note: string
 }
 
+type OrderStatEntry = {
+  year: number
+  month: number
+  totalItems: number
+}
+
 const emptyForm: CustomerFormData = {
   accountName: "",
   name: "",
@@ -34,6 +54,29 @@ const emptyForm: CustomerFormData = {
   companyName: "",
   address: "",
   note: "",
+}
+
+// ─────────────────────────────────────────────
+// Chart tooltip
+// ─────────────────────────────────────────────
+function ChartTooltip({
+  active,
+  payload,
+  label,
+}: {
+  active?: boolean
+  payload?: { payload: { blinds: number; orders: number } }[]
+  label?: string
+}) {
+  if (!active || !payload?.length) return null
+  const data = payload[0].payload
+  return (
+    <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 shadow-sm text-xs">
+      <p className="font-medium text-gray-900 mb-1">{label}</p>
+      <p className="text-gray-700">{data.blinds.toLocaleString()} blinds</p>
+      <p className="text-gray-400">{data.orders} order{data.orders !== 1 ? "s" : ""}</p>
+    </div>
+  )
 }
 
 // ─────────────────────────────────────────────
@@ -82,7 +125,7 @@ function CustomerFormModal({
     setForm((prev) => ({ ...prev, [field]: value }))
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: FormEvent) {
     e.preventDefault()
     if (!form.accountName.trim()) {
       setError("Account name is required.")
@@ -309,6 +352,9 @@ export default function CustomersPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [editingCustomer, setEditingCustomer] = useState<Customer | null>(null)
 
+  const [orderStats, setOrderStats] = useState<OrderStatEntry[]>([])
+  const [chartSelectedYear, setChartSelectedYear] = useState<number | null>(null)
+
   async function fetchCustomers() {
     try {
       setLoading(true)
@@ -325,9 +371,59 @@ export default function CustomersPage() {
     }
   }
 
+  async function fetchOrderStats() {
+    try {
+      const res = await apiFetch("/orders/stats")
+      if (!res.ok) return
+      const data: { orders: OrderStatEntry[] } = await res.json()
+      setOrderStats(data.orders)
+    } catch {
+      // non-critical — chart simply won't render
+    }
+  }
+
   useEffect(() => {
     fetchCustomers()
+    fetchOrderStats()
   }, [])
+
+  // ── Chart data ──────────────────────────────
+  const chartYears = useMemo(() => {
+    const set = new Set(orderStats.map((o) => o.year))
+    return Array.from(set).sort((a, b) => b - a)
+  }, [orderStats])
+
+  const chartData = useMemo(() => {
+    if (chartSelectedYear !== null) {
+      const monthly = new Array(12).fill(0).map((_, i) => ({
+        label: MONTH_NAMES[i],
+        blinds: 0,
+        orders: 0,
+      }))
+      for (const o of orderStats) {
+        if (o.year !== chartSelectedYear) continue
+        monthly[o.month - 1].blinds += o.totalItems
+        monthly[o.month - 1].orders += 1
+      }
+      return monthly
+    }
+
+    const map = new Map<number, { label: string; blinds: number; orders: number }>()
+    for (const o of orderStats) {
+      const existing = map.get(o.year) ?? { label: String(o.year), blinds: 0, orders: 0 }
+      existing.blinds += o.totalItems
+      existing.orders += 1
+      map.set(o.year, existing)
+    }
+    return Array.from(map.entries())
+      .sort(([a], [b]) => a - b)
+      .map(([, v]) => v)
+  }, [orderStats, chartSelectedYear])
+
+  const totalBlinds = useMemo(
+    () => orderStats.reduce((sum, o) => sum + o.totalItems, 0),
+    [orderStats]
+  )
 
   const filteredCustomers = useMemo(() => {
     const keyword = search.trim().toLowerCase()
@@ -414,8 +510,82 @@ export default function CustomersPage() {
             {/* ── Stat cards ── */}
             <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
               <StatCard label="Total customers" value={customers.length} />
+              <StatCard
+                label="Total orders"
+                value={orderStats.length > 0
+                  ? customers.reduce((s, c) => s + (c.totalOrders ?? 0), 0)
+                  : "—"}
+              />
+              <StatCard
+                label="Blinds ordered"
+                value={totalBlinds > 0 ? totalBlinds.toLocaleString() : "—"}
+              />
               <StatCard label="Search results" value={filteredCustomers.length} />
             </div>
+
+            {/* ── Factory order volume chart ── */}
+            {chartData.length > 0 && (
+              <Section
+                title={
+                  chartSelectedYear !== null
+                    ? `Factory order volume — ${chartSelectedYear}`
+                    : "Factory order volume — All time"
+                }
+                actions={
+                  <select
+                    value={chartSelectedYear ?? "all"}
+                    onChange={(e) =>
+                      setChartSelectedYear(
+                        e.target.value === "all" ? null : Number(e.target.value)
+                      )
+                    }
+                    className="rounded-md border border-gray-200 bg-white px-2.5 py-1 text-xs text-gray-600 focus:outline-none focus:ring-2 focus:ring-indigo-300"
+                  >
+                    <option value="all">All time</option>
+                    {chartYears.map((year) => (
+                      <option key={year} value={year}>{year}</option>
+                    ))}
+                  </select>
+                }
+              >
+                <div className="px-2 py-5">
+                  <ResponsiveContainer width="100%" height={220}>
+                    <BarChart
+                      data={chartData}
+                      barSize={28}
+                      margin={{ top: 4, right: 16, left: -10, bottom: 0 }}
+                    >
+                      <CartesianGrid
+                        strokeDasharray="3 3"
+                        stroke="#f0f0f0"
+                        vertical={false}
+                      />
+                      <XAxis
+                        dataKey="label"
+                        tick={{ fontSize: 11, fill: "#9ca3af" }}
+                        axisLine={false}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        tick={{ fontSize: 11, fill: "#9ca3af" }}
+                        axisLine={false}
+                        tickLine={false}
+                        allowDecimals={false}
+                      />
+                      <Tooltip
+                        content={<ChartTooltip />}
+                        cursor={{ fill: "#f9fafb" }}
+                      />
+                      <Bar
+                        dataKey="blinds"
+                        fill="#6366f1"
+                        radius={[4, 4, 0, 0]}
+                      />
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              </Section>
+            )}
 
             {/* ── Search + Add ── */}
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">

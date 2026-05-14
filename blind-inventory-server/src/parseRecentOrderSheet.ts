@@ -37,6 +37,8 @@ const columnAliases = {
   componentryColour: ["COMPONENTRY COLOUR"],
   chainType: ["CHN", "CHAIN"],
   operationRaw: ["CHAIN SIZE/ OPERATION", "OPERATION", "CHAIN SIZE"],
+  sideWdr: ["SIDE WDR", "SIDE WDR.", "WDR", "SIDE"],
+  roll: ["ROLL"],
   qty: ["QTY", "QUANTITY"],
 }
 
@@ -137,7 +139,10 @@ function parseBracketRow(
     // Combo brackets already carry a descriptive product name (e.g. "LHS SLIMLINE COMBOS BLACK")
     // so appending "BRACKET" would be redundant. Standard colour-only brackets
     // (e.g. "S WHITE") need the suffix to stay distinct from other colour-named items.
+    // Names that already contain "BRACKET/BRACKETS" anywhere (e.g. "EXTENDED BRACKETS WHITE")
+    // also don't need the suffix appended again.
     const isCombo = /COMBO/i.test(rawName)
+    const alreadyHasBracket = /BRACK/i.test(rawName)
 
     let itemName: string
     if (isCombo) {
@@ -152,6 +157,9 @@ function parseBracketRow(
       } else {
         itemName = upperName
       }
+    } else if (alreadyHasBracket) {
+      // Name already contains BRACKET/BRACKETS — use as-is
+      itemName = upperName
     } else {
       itemName = `${upperName} BRACKET`
     }
@@ -295,6 +303,8 @@ export function parseRecentOrderSheet(buffer: Buffer): ParsedOrderSheetResult {
     const operationRaw = toText(
       getValueByAliases(row, columnAliases.operationRaw)
     )
+    const sideWdr = toText(getValueByAliases(row, columnAliases.sideWdr))
+    const roll = toText(getValueByAliases(row, columnAliases.roll))
     const width = toNumber(getValueByAliases(row, columnAliases.width))
     const drop = toNumber(getValueByAliases(row, columnAliases.drop))
     const qtyRaw = toNumber(getValueByAliases(row, columnAliases.qty))
@@ -333,6 +343,8 @@ export function parseRecentOrderSheet(buffer: Buffer): ParsedOrderSheetResult {
       componentryColour,
       chainType,
       operationRaw,
+      sideWdr,
+      roll,
       qty: qtyRaw && qtyRaw > 0 ? qtyRaw : 1,
       tubeOverride,
     })
