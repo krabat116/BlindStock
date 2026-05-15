@@ -23,6 +23,18 @@ function FilterIcon({ active }: { active: boolean }) {
   )
 }
 
+function ChevronIcon({ collapsed }: { collapsed: boolean }) {
+  return (
+    <svg
+      xmlns="http://www.w3.org/2000/svg"
+      viewBox="0 0 10 6"
+      className={`h-2.5 w-2.5 fill-gray-400 transition-transform duration-150 ${collapsed ? "-rotate-90" : ""}`}
+    >
+      <path d="M0 0l5 6 5-6z" />
+    </svg>
+  )
+}
+
 // Dropdown that closes when clicking outside
 function FilterDropdown({
   label,
@@ -74,6 +86,7 @@ export default function InventoryTable({
 }: InventoryTableProps) {
   const [categoryFilter, setCategoryFilter] = useState("")
   const [statusFilter, setStatusFilter] = useState("")
+  const [collapsed, setCollapsed] = useState<Set<string>>(new Set())
 
   const categories = useMemo(() => {
     const unique = Array.from(new Set(items.map((i) => i.category).filter(Boolean)))
@@ -89,6 +102,35 @@ export default function InventoryTable({
       })
       .sort((a, b) => (a.category ?? "").localeCompare(b.category ?? ""))
   }, [items, categoryFilter, statusFilter])
+
+  const grouped = useMemo(() => {
+    const map = new Map<string, InventoryItem[]>()
+    for (const item of filtered) {
+      const cat = item.category ?? "Uncategorised"
+      if (!map.has(cat)) map.set(cat, [])
+      map.get(cat)!.push(item)
+    }
+    return Array.from(map.entries())
+  }, [filtered])
+
+  function toggleCategory(cat: string) {
+    setCollapsed((prev) => {
+      const next = new Set(prev)
+      if (next.has(cat)) next.delete(cat)
+      else next.add(cat)
+      return next
+    })
+  }
+
+  const allCollapsed = grouped.length > 0 && collapsed.size === grouped.length
+
+  function toggleAll() {
+    if (allCollapsed) {
+      setCollapsed(new Set())
+    } else {
+      setCollapsed(new Set(grouped.map(([cat]) => cat)))
+    }
+  }
 
   const optionClass = (selected: boolean) =>
     `block w-full px-3 py-1.5 text-left text-xs transition-colors cursor-pointer ${
@@ -130,60 +172,96 @@ export default function InventoryTable({
                 )}
               </FilterDropdown>
             </th>
-            <th className="px-5 py-2 text-xs font-medium uppercase tracking-wide text-gray-400"></th>
+            <th className="px-5 py-2 text-xs font-medium uppercase tracking-wide text-gray-400">
+              {grouped.length > 0 && (
+                <button
+                  onClick={toggleAll}
+                  className="font-normal normal-case tracking-normal text-gray-400 hover:text-gray-600 transition-colors"
+                >
+                  {allCollapsed ? "Expand all" : "Collapse all"}
+                </button>
+              )}
+            </th>
           </tr>
         </thead>
 
         <tbody>
-          {filtered.length === 0 ? (
+          {grouped.length === 0 ? (
             <tr>
               <td colSpan={7} className="px-5 py-8 text-center text-sm text-gray-400">
                 No inventory items found.
               </td>
             </tr>
           ) : (
-            filtered.map((item) => (
-              <tr key={item.id} className="bg-gray-50 text-sm text-gray-700">
-                <td className="rounded-l-lg px-5 py-3 font-medium text-gray-900">
-                  {item.name}
-                </td>
-                <td className="px-5 py-3 text-gray-500">{item.category}</td>
-                <td className="px-5 py-3">
-                  {item.stockType === "LENGTH"
-                    ? item.totalLengthMm != null
-                      ? `${item.totalLengthMm.toLocaleString()} mm`
-                      : "—"
-                    : item.quantity}
-                </td>
-                <td className="px-5 py-3 text-gray-500">
-                  {item.stockType === "LENGTH"
-                    ? item.minimumLengthMm != null
-                      ? `${item.minimumLengthMm.toLocaleString()} mm`
-                      : "—"
-                    : item.minimumStock}
-                </td>
-                <td className="px-5 py-3 text-gray-500">{item.unit}</td>
-                <td className="px-5 py-3">
-                  <StockStatusBadge status={getStockStatus(item)} />
-                </td>
-                <td className="rounded-r-lg px-5 py-3">
-                  <div className="flex items-center gap-1.5">
-                    <button
-                      onClick={() => onOpenAddStock(item)}
-                      className="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-white transition-colors"
+            grouped.map(([cat, catItems]) => {
+              const isCollapsed = collapsed.has(cat)
+              return (
+                <>
+                  {/* Category header row */}
+                  <tr
+                    key={`header-${cat}`}
+                    onClick={() => toggleCategory(cat)}
+                    className="cursor-pointer select-none"
+                  >
+                    <td
+                      colSpan={7}
+                      className="rounded-lg bg-white px-5 py-2 text-xs font-semibold uppercase tracking-wide text-gray-500 border border-gray-100"
                     >
-                      + Stock
-                    </button>
-                    <button
-                      onClick={() => onOpenAdjustStock(item)}
-                      className="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-white transition-colors"
-                    >
-                      Adjust
-                    </button>
-                  </div>
-                </td>
-              </tr>
-            ))
+                      <div className="flex items-center gap-2">
+                        <ChevronIcon collapsed={isCollapsed} />
+                        <span>{cat}</span>
+                        <span className="font-normal text-gray-400">({catItems.length})</span>
+                      </div>
+                    </td>
+                  </tr>
+
+                  {/* Item rows */}
+                  {!isCollapsed &&
+                    catItems.map((item) => (
+                      <tr key={item.id} className="bg-gray-50 text-sm text-gray-700">
+                        <td className="rounded-l-lg px-5 py-3 font-medium text-gray-900">
+                          {item.name}
+                        </td>
+                        <td className="px-5 py-3 text-gray-500">{item.category}</td>
+                        <td className="px-5 py-3">
+                          {item.stockType === "LENGTH"
+                            ? item.totalLengthMm != null
+                              ? `${item.totalLengthMm.toLocaleString()} mm`
+                              : "—"
+                            : item.quantity}
+                        </td>
+                        <td className="px-5 py-3 text-gray-500">
+                          {item.stockType === "LENGTH"
+                            ? item.minimumLengthMm != null
+                              ? `${item.minimumLengthMm.toLocaleString()} mm`
+                              : "—"
+                            : item.minimumStock}
+                        </td>
+                        <td className="px-5 py-3 text-gray-500">{item.unit}</td>
+                        <td className="px-5 py-3">
+                          <StockStatusBadge status={getStockStatus(item)} />
+                        </td>
+                        <td className="rounded-r-lg px-5 py-3">
+                          <div className="flex items-center gap-1.5">
+                            <button
+                              onClick={() => onOpenAddStock(item)}
+                              className="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-white transition-colors"
+                            >
+                              + Stock
+                            </button>
+                            <button
+                              onClick={() => onOpenAdjustStock(item)}
+                              className="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-600 hover:bg-white transition-colors"
+                            >
+                              Adjust
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                </>
+              )
+            })
           )}
         </tbody>
       </table>
