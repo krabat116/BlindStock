@@ -25,6 +25,7 @@ export async function getItems() {
     totalAreaMm2: item.totalAreaMm2,
     minimumAreaMm2: item.minimumAreaMm2,
     rollWidthMm: item.rollWidthMm,
+    defaultRollLengthMm: item.defaultRollLengthMm,
     category: item.category.name,
   }))
 }
@@ -90,7 +91,7 @@ export async function updateItemStock(
       defaultLengthMm: result.defaultLengthMm, totalLengthMm: result.totalLengthMm,
       minimumLengthMm: result.minimumLengthMm, cutoffLengthMm: result.cutoffLengthMm,
       totalAreaMm2: result.totalAreaMm2, minimumAreaMm2: result.minimumAreaMm2,
-      rollWidthMm: result.rollWidthMm,
+      rollWidthMm: result.rollWidthMm, defaultRollLengthMm: result.defaultRollLengthMm,
       category: result.category.name,
     }
   }
@@ -128,7 +129,7 @@ export async function updateItemStock(
       defaultLengthMm: result.defaultLengthMm, totalLengthMm: result.totalLengthMm,
       minimumLengthMm: result.minimumLengthMm, cutoffLengthMm: result.cutoffLengthMm,
       totalAreaMm2: result.totalAreaMm2, minimumAreaMm2: result.minimumAreaMm2,
-      rollWidthMm: result.rollWidthMm,
+      rollWidthMm: result.rollWidthMm, defaultRollLengthMm: result.defaultRollLengthMm,
       category: result.category.name,
     }
   }
@@ -191,6 +192,7 @@ export async function updateItemSettings(
     totalAreaMm2?: number
     minimumAreaMm2?: number
     rollWidthMm?: number
+    defaultRollLengthMm?: number | null
   }
 ) {
   if (!Number.isInteger(itemId)) {
@@ -219,7 +221,7 @@ export async function updateItemSettings(
         minimumStock: payload.minimumStock ?? existingItem.minimumStock ?? 0,
         unit: payload.unit?.trim() ?? existingItem.unit ?? "pcs",
         defaultLengthMm: null, totalLengthMm: null, minimumLengthMm: null, cutoffLengthMm: null,
-        totalAreaMm2: null, minimumAreaMm2: null, rollWidthMm: null,
+        totalAreaMm2: null, minimumAreaMm2: null, rollWidthMm: null, defaultRollLengthMm: null,
       },
       include: { category: true },
     })
@@ -230,6 +232,9 @@ export async function updateItemSettings(
     const totalAreaMm2 = payload.totalAreaMm2 ?? existingItem.totalAreaMm2 ?? 0
     const minimumAreaMm2 = payload.minimumAreaMm2 ?? existingItem.minimumAreaMm2 ?? 0
     const rollWidthMm = payload.rollWidthMm !== undefined ? payload.rollWidthMm : (existingItem.rollWidthMm ?? null)
+    const defaultRollLengthMm = payload.defaultRollLengthMm !== undefined
+      ? payload.defaultRollLengthMm
+      : (existingItem.defaultRollLengthMm ?? null)
 
     const updatedItem = await prisma.item.update({
       where: { id: itemId },
@@ -238,6 +243,7 @@ export async function updateItemSettings(
         totalAreaMm2,
         minimumAreaMm2,
         rollWidthMm,
+        defaultRollLengthMm,
         quantity: null, minimumStock: null, unit: "m²",
         defaultLengthMm: null, totalLengthMm: null, minimumLengthMm: null, cutoffLengthMm: null,
       },
@@ -465,6 +471,7 @@ export async function createItem(input: CreateItemPayload) {
     const totalAreaMm2 = input.totalAreaMm2 ?? 0
     const minimumAreaMm2 = input.minimumAreaMm2 ?? 0
     const rollWidthMm = input.rollWidthMm ?? null
+    const defaultRollLengthMm = input.defaultRollLengthMm ?? null
 
     const createdItem = await prisma.item.create({
       data: {
@@ -474,6 +481,7 @@ export async function createItem(input: CreateItemPayload) {
         totalAreaMm2,
         minimumAreaMm2,
         rollWidthMm,
+        defaultRollLengthMm,
         quantity: null, minimumStock: null, unit: "m²",
         defaultLengthMm: null, totalLengthMm: null, minimumLengthMm: null,
       },
@@ -496,7 +504,7 @@ export async function createItem(input: CreateItemPayload) {
       defaultLengthMm: createdItem.defaultLengthMm, totalLengthMm: createdItem.totalLengthMm,
       minimumLengthMm: createdItem.minimumLengthMm, cutoffLengthMm: createdItem.cutoffLengthMm,
       totalAreaMm2: createdItem.totalAreaMm2, minimumAreaMm2: createdItem.minimumAreaMm2,
-      rollWidthMm: createdItem.rollWidthMm,
+      rollWidthMm: createdItem.rollWidthMm, defaultRollLengthMm: createdItem.defaultRollLengthMm,
       category: createdItem.category.name,
     }
   }
@@ -666,6 +674,7 @@ export async function adjustItemStock(
       totalAreaMm2: result.totalAreaMm2,
       minimumAreaMm2: result.minimumAreaMm2,
       rollWidthMm: result.rollWidthMm,
+      defaultRollLengthMm: result.defaultRollLengthMm,
       category: result.category.name,
     }
   }
@@ -732,6 +741,7 @@ export async function adjustItemStock(
       totalAreaMm2: result.totalAreaMm2,
       minimumAreaMm2: result.minimumAreaMm2,
       rollWidthMm: result.rollWidthMm,
+      defaultRollLengthMm: result.defaultRollLengthMm,
       category: result.category.name,
     }
   }
@@ -875,7 +885,7 @@ export async function bulkCreateMissingItems(
         categoryId: dbCategory.id,
         stockType: isArea ? "AREA" : isLength ? "LENGTH" : "COUNT",
         ...(isArea
-          ? { totalAreaMm2: 0, minimumAreaMm2: 0, rollWidthMm: null, unit: "m²" }
+          ? { totalAreaMm2: 0, minimumAreaMm2: 0, rollWidthMm: null, defaultRollLengthMm: null, unit: "m²" }
           : isLength
             ? { totalLengthMm: 0, minimumLengthMm: 0 }
             : { quantity: 0, minimumStock: 0, unit: "pcs" }),

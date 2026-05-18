@@ -38,9 +38,10 @@ model Item {
   cutoffLengthMm   Int?  // 막대 하나당 사용 불가 끝부분 길이(mm), 기본값 800
 
   // AREA type (fabric/material)
-  totalAreaMm2     Int?
-  minimumAreaMm2   Int?
-  rollWidthMm      Int?  // Fabric roll width (mm) — used in FFDH strip packing
+  totalAreaMm2        Int?
+  minimumAreaMm2      Int?
+  rollWidthMm         Int?  // Fabric roll width (mm) — used in FFDH strip packing
+  defaultRollLengthMm Int?  // Standard length of one roll (mm) — used to display roll count
 
   categoryId       Int
   category         Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)

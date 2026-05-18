@@ -149,7 +149,11 @@ export default function AddStockModal({
                       <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Current Total</p>
                       <p className="mt-1 text-gray-700">
                         {item.totalAreaMm2 != null
-                          ? `${(item.totalAreaMm2 / 1_000_000).toFixed(2)} m²`
+                          ? item.rollWidthMm
+                            ? item.defaultRollLengthMm
+                              ? `${(item.totalAreaMm2 / item.rollWidthMm / 1000).toFixed(1)} m · ${(item.totalAreaMm2 / (item.rollWidthMm * item.defaultRollLengthMm)).toFixed(1)} rolls`
+                              : `${(item.totalAreaMm2 / item.rollWidthMm / 1000).toFixed(1)} m`
+                            : `${(item.totalAreaMm2 / 1_000_000).toFixed(2)} m²`
                           : "—"}
                       </p>
                     </div>
@@ -158,6 +162,14 @@ export default function AddStockModal({
                         <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Roll Width</p>
                         <p className="mt-1 text-gray-700">
                           {(item.rollWidthMm / 1000).toFixed(2)} m ({item.rollWidthMm.toLocaleString()} mm)
+                        </p>
+                      </div>
+                    )}
+                    {item.rollWidthMm != null && item.defaultRollLengthMm != null && (
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Default Roll Length</p>
+                        <p className="mt-1 text-gray-700">
+                          {(item.defaultRollLengthMm / 1000).toFixed(1)} m
                         </p>
                       </div>
                     )}
@@ -223,7 +235,9 @@ export default function AddStockModal({
                     </label>
                     <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-900">
                       {item.rollWidthMm != null
-                        ? `+ ${Number(rollLengthM) || 0} m (${(addedAreaMm2 / 1_000_000).toFixed(2)} m²)`
+                        ? item.defaultRollLengthMm
+                          ? `+ ${Number(rollLengthM) || 0} m (${(addedAreaMm2 / (item.rollWidthMm * item.defaultRollLengthMm)).toFixed(1)} rolls)`
+                          : `+ ${Number(rollLengthM) || 0} m (${(addedAreaMm2 / 1_000_000).toFixed(2)} m²)`
                         : `+ ${(addedAreaMm2 / 1_000_000).toFixed(2)} m²`}
                     </div>
                   </div>
@@ -232,7 +246,11 @@ export default function AddStockModal({
                       New Total
                     </label>
                     <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-900">
-                      {(((item.totalAreaMm2 ?? 0) + addedAreaMm2) / 1_000_000).toFixed(2)} m²
+                      {item.rollWidthMm != null
+                        ? item.defaultRollLengthMm
+                          ? `${(((item.totalAreaMm2 ?? 0) + addedAreaMm2) / item.rollWidthMm / 1000).toFixed(1)} m · ${(((item.totalAreaMm2 ?? 0) + addedAreaMm2) / (item.rollWidthMm * item.defaultRollLengthMm)).toFixed(1)} rolls`
+                          : `${(((item.totalAreaMm2 ?? 0) + addedAreaMm2) / item.rollWidthMm / 1000).toFixed(1)} m`
+                        : `${(((item.totalAreaMm2 ?? 0) + addedAreaMm2) / 1_000_000).toFixed(2)} m²`}
                     </div>
                   </div>
                 </div>

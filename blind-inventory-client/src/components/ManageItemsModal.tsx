@@ -15,6 +15,7 @@ type ItemSettingsPayload = {
   totalAreaMm2?: number
   minimumAreaMm2?: number
   rollWidthMm?: number
+  defaultRollLengthMm?: number | null
 }
 
 type ManageItemsModalProps = {
@@ -115,10 +116,12 @@ export default function ManageItemsModal({
   const [settingsCutoffLengthMm, setSettingsCutoffLengthMm] = useState("800")
   const [settingsMinimumAreaM2, setSettingsMinimumAreaM2] = useState("0")
   const [settingsRollWidthMm, setSettingsRollWidthMm] = useState("3000")
+  const [settingsDefaultRollLengthM, setSettingsDefaultRollLengthM] = useState("")
 
   const [rollWidthMm, setRollWidthMm] = useState("3000")
   const [rollLengthM, setRollLengthM] = useState("0")
   const [minimumAreaM2, setMinimumAreaM2] = useState("0")
+  const [defaultRollLengthM, setDefaultRollLengthM] = useState("")
 
   const settingsTotalLengthMm = useMemo(() => {
     const d = Number(settingsDefaultLengthMm)
@@ -156,6 +159,7 @@ export default function ManageItemsModal({
           } else if (item.stockType === "AREA") {
             setSettingsMinimumAreaM2(String((item.minimumAreaMm2 ?? 0) / 1_000_000))
             setSettingsRollWidthMm(String(item.rollWidthMm ?? 3000))
+            setSettingsDefaultRollLengthM(item.defaultRollLengthMm ? String(item.defaultRollLengthMm / 1000) : "")
             setSettingsDefaultLengthMm("4000")
             setSettingsStickCount("0")
             setSettingsMinimumLengthMm("0")
@@ -211,6 +215,7 @@ export default function ManageItemsModal({
     setRollWidthMm("3000")
     setRollLengthM("0")
     setMinimumAreaM2("0")
+    setDefaultRollLengthM("")
     setStockTypeTab("COUNT")
   }
 
@@ -264,6 +269,7 @@ export default function ManageItemsModal({
         const parsedRollWidthMm = Number(rollWidthMm)
         const parsedRollLengthM = Number(rollLengthM)
         const parsedMinAreaM2 = Number(minimumAreaM2)
+        const parsedDefaultRollLengthM = Number(defaultRollLengthM)
 
         if (!Number.isFinite(parsedRollWidthMm) || parsedRollWidthMm <= 0) {
           setError("Roll width must be greater than 0.")
@@ -280,6 +286,11 @@ export default function ManageItemsModal({
           return
         }
 
+        if (defaultRollLengthM !== "" && (!Number.isFinite(parsedDefaultRollLengthM) || parsedDefaultRollLengthM < 0)) {
+          setError("Default roll length must be a non-negative number.")
+          return
+        }
+
         await onCreateItem({
           name: name.trim(),
           categoryId: selectedCategoryId,
@@ -287,6 +298,7 @@ export default function ManageItemsModal({
           totalAreaMm2: Math.round(parsedRollWidthMm * parsedRollLengthM * 1000),
           minimumAreaMm2: Math.round(parsedMinAreaM2 * 1_000_000),
           rollWidthMm: Math.round(parsedRollWidthMm),
+          defaultRollLengthMm: parsedDefaultRollLengthM > 0 ? Math.round(parsedDefaultRollLengthM * 1000) : null,
         })
       } else {
         const parsedDefaultLengthMm = Number(defaultLengthMm)
@@ -376,6 +388,7 @@ export default function ManageItemsModal({
     } else if (item.stockType === "AREA") {
       setSettingsMinimumAreaM2(String((item.minimumAreaMm2 ?? 0) / 1_000_000))
       setSettingsRollWidthMm(String(item.rollWidthMm ?? 3000))
+      setSettingsDefaultRollLengthM(item.defaultRollLengthMm ? String(item.defaultRollLengthMm / 1000) : "")
       setSettingsDefaultLengthMm("4000")
       setSettingsStickCount("0")
       setSettingsMinimumLengthMm("0")
@@ -428,6 +441,7 @@ export default function ManageItemsModal({
       } else if (settingsStockType === "AREA") {
         const minA = Number(settingsMinimumAreaM2)
         const rw = Number(settingsRollWidthMm)
+        const drl = Number(settingsDefaultRollLengthM)
         if (!Number.isFinite(minA) || minA < 0) {
           setSettingsError("Minimum area must be a non-negative number.")
           return
@@ -436,11 +450,16 @@ export default function ManageItemsModal({
           setSettingsError("Roll width must be greater than 0.")
           return
         }
+        if (settingsDefaultRollLengthM !== "" && (!Number.isFinite(drl) || drl < 0)) {
+          setSettingsError("Default roll length must be a non-negative number.")
+          return
+        }
 
         await onUpdateItemSettings(settingsItemId, {
           stockType: "AREA",
           minimumAreaMm2: Math.round(minA * 1_000_000),
           rollWidthMm: Math.round(rw),
+          defaultRollLengthMm: drl > 0 ? Math.round(drl * 1000) : null,
         })
       } else {
         const minS = Number(settingsMinimumStock)
@@ -838,6 +857,21 @@ export default function ManageItemsModal({
                         </div>
                         <div>
                           <label className="mb-2 block text-sm font-medium text-gray-700">
+                            Default Roll Length (m) <span className="font-normal text-gray-400">optional</span>
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.1"
+                            value={settingsDefaultRollLengthM}
+                            onChange={(e) => setSettingsDefaultRollLengthM(e.target.value)}
+                            placeholder="e.g. 25"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                          />
+                          <p className="mt-1 text-xs text-gray-400">Leave empty if rolls vary in length</p>
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-gray-700">
                             Minimum Area (m²)
                           </label>
                           <input
@@ -1141,6 +1175,21 @@ export default function ManageItemsModal({
                       <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-900">
                         {(Number(rollWidthMm) * Number(rollLengthM) / 1000).toFixed(3)} m²
                       </div>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-700">
+                        Default Roll Length (m) <span className="font-normal text-gray-400">optional</span>
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={defaultRollLengthM}
+                        onChange={(e) => setDefaultRollLengthM(e.target.value)}
+                        placeholder="e.g. 25"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                      />
+                      <p className="mt-1 text-xs text-gray-400">Leave empty if rolls vary in length</p>
                     </div>
                     <div>
                       <label className="mb-2 block text-sm font-medium text-gray-700">

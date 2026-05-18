@@ -29,6 +29,7 @@ export type CreateItemPayload =
       totalAreaMm2: number
       minimumAreaMm2: number
       rollWidthMm: number
+      defaultRollLengthMm?: number | null
       quantity?: null
       minimumStock?: null
       unit?: null

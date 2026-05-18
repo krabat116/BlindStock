@@ -12,6 +12,7 @@ export type InventoryItem = {
   totalAreaMm2: number | null
   minimumAreaMm2: number | null
   rollWidthMm: number | null
+  defaultRollLengthMm: number | null
   quantity: number
   minimumStock: number
   unit: string

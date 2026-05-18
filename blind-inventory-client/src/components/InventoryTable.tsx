@@ -10,6 +10,20 @@ type InventoryTableProps = {
   onOpenManageItems: () => void
 }
 
+function formatFabricStock(
+  areaMm2: number,
+  rollWidthMm: number,
+  defaultRollLengthMm: number | null
+): string {
+  const totalLengthM = areaMm2 / rollWidthMm / 1000
+  const lengthStr = `${totalLengthM.toFixed(1)} m`
+  if (defaultRollLengthMm && defaultRollLengthMm > 0) {
+    const rolls = areaMm2 / (rollWidthMm * defaultRollLengthMm)
+    return `${lengthStr} · ${rolls.toFixed(1)} rolls`
+  }
+  return lengthStr
+}
+
 // Downward triangle icon — active state is dark
 function FilterIcon({ active }: { active: boolean }) {
   return (
@@ -230,7 +244,9 @@ export default function InventoryTable({
                               : "—"
                             : item.stockType === "AREA"
                               ? item.totalAreaMm2 != null
-                                ? `${(item.totalAreaMm2 / 1_000_000).toFixed(2)} m²`
+                                ? item.rollWidthMm
+                                  ? formatFabricStock(item.totalAreaMm2, item.rollWidthMm, item.defaultRollLengthMm)
+                                  : `${(item.totalAreaMm2 / 1_000_000).toFixed(2)} m²`
                                 : "—"
                               : item.quantity}
                         </td>
@@ -241,7 +257,9 @@ export default function InventoryTable({
                               : "—"
                             : item.stockType === "AREA"
                               ? item.minimumAreaMm2 != null
-                                ? `${(item.minimumAreaMm2 / 1_000_000).toFixed(2)} m²`
+                                ? item.rollWidthMm
+                                  ? formatFabricStock(item.minimumAreaMm2, item.rollWidthMm, item.defaultRollLengthMm)
+                                  : `${(item.minimumAreaMm2 / 1_000_000).toFixed(2)} m²`
                                 : "—"
                               : item.minimumStock}
                         </td>
