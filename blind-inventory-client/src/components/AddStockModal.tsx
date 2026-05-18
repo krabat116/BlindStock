@@ -25,6 +25,7 @@ export default function AddStockModal({
   const [error, setError] = useState("")
 
   const isLength = item?.stockType === "LENGTH"
+  const isArea = item?.stockType === "AREA"
 
   // LENGTH 타입: 추가할 총 길이 = 막대 수 × (기본 길이 - cut-off)
   const effectiveLengthPerStick = useMemo(() => {
@@ -39,6 +40,14 @@ export default function AddStockModal({
     if (!Number.isFinite(count) || count < 0) return 0
     return Math.round(count * effectiveLengthPerStick)
   }, [isLength, stickCount, effectiveLengthPerStick, item?.defaultLengthMm])
+
+  // AREA 타입: 사용자가 m² 입력 → mm²로 변환
+  const addedAreaMm2 = useMemo(() => {
+    if (!isArea) return 0
+    const m2 = Number(quantity)
+    if (!Number.isFinite(m2) || m2 < 0) return 0
+    return Math.round(m2 * 1_000_000)
+  }, [isArea, quantity])
 
   useEffect(() => {
     if (item) {
@@ -68,6 +77,13 @@ export default function AddStockModal({
           return
         }
         await onSave(item!.id, totalLengthMm, note)
+      } else if (isArea) {
+        const m2 = Number(quantity)
+        if (!Number.isFinite(m2) || m2 < 0) {
+          setError("Please enter a valid non-negative number.")
+          return
+        }
+        await onSave(item!.id, addedAreaMm2, note)
       } else {
         const parsedQuantity = Number(quantity)
         if (!Number.isFinite(parsedQuantity) || parsedQuantity < 0) {
@@ -94,13 +110,76 @@ export default function AddStockModal({
           <p className="mt-1 text-sm text-gray-500">
             {isLength
               ? "Enter the number of sticks to add. The value will be added to the current inventory."
-              : "Enter the quantity to add. The value will be added to the current inventory."}
+              : isArea
+                ? "Enter the area to add (m²). The value will be added to the current inventory."
+                : "Enter the quantity to add. The value will be added to the current inventory."}
           </p>
         </div>
 
         <form onSubmit={handleSubmit}>
           <div className="px-6 py-5">
-            {isLength ? (
+            {isArea ? (
+              /* ── AREA 타입 UI ── */
+              <div className="space-y-4">
+                <div className="rounded-xl bg-gray-50 p-4">
+                  <div className="grid grid-cols-2 gap-4 text-sm">
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Item</p>
+                      <p className="mt-1 font-medium text-gray-900">{item.name}</p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Current Total</p>
+                      <p className="mt-1 text-gray-700">
+                        {item.totalAreaMm2 != null
+                          ? `${(item.totalAreaMm2 / 1_000_000).toFixed(2)} m²`
+                          : "—"}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Min Stock Threshold</p>
+                      <p className="mt-1 text-gray-700">
+                        {item.minimumAreaMm2 != null
+                          ? `${(item.minimumAreaMm2 / 1_000_000).toFixed(2)} m²`
+                          : "—"}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="grid gap-4 sm:grid-cols-3">
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                      Area to Add (m²)
+                    </label>
+                    <input
+                      type="number"
+                      min="0"
+                      step="0.01"
+                      value={quantity}
+                      onChange={(e) => setQuantity(e.target.value)}
+                      placeholder="e.g. 50"
+                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                      Adding
+                    </label>
+                    <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-900">
+                      + {(addedAreaMm2 / 1_000_000).toFixed(2)} m²
+                    </div>
+                  </div>
+                  <div>
+                    <label className="mb-2 block text-sm font-medium text-gray-700">
+                      New Total
+                    </label>
+                    <div className="rounded-lg border border-blue-100 bg-blue-50 px-3 py-2 text-sm font-medium text-blue-900">
+                      {(((item.totalAreaMm2 ?? 0) + addedAreaMm2) / 1_000_000).toFixed(2)} m²
+                    </div>
+                  </div>
+                </div>
+              </div>
+            ) : isLength ? (
               /* ── LENGTH 타입 UI ── */
               <div className="space-y-4">
                 <div className="rounded-xl bg-gray-50 p-4">

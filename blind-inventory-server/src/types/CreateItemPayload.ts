@@ -21,3 +21,16 @@ export type CreateItemPayload =
       minimumStock?: null
       unit?: null
     }
+  | {
+      name: string
+      categoryId: number
+      stockType: "AREA"
+      totalAreaMm2: number
+      minimumAreaMm2: number
+      quantity?: null
+      minimumStock?: null
+      unit?: null
+      defaultLengthMm?: null
+      totalLengthMm?: null
+      minimumLengthMm?: null
+    }

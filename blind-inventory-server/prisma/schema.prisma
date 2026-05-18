@@ -9,6 +9,7 @@ datasource db {
 enum StockType {
   COUNT
   LENGTH
+  AREA
 }
 
 model Category {
@@ -36,6 +37,10 @@ model Item {
   minimumLengthMm  Int?
   cutoffLengthMm   Int?  // 막대 하나당 사용 불가 끝부분 길이(mm), 기본값 800
 
+  // AREA type (fabric/material)
+  totalAreaMm2     Int?
+  minimumAreaMm2   Int?
+
   categoryId       Int
   category         Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)
   transactions     Transaction[]
@@ -56,6 +61,9 @@ model Transaction {
 
   // LENGTH transaction
   lengthMm       Int?
+
+  // AREA transaction
+  areaMm2        Int?
 
   source         String?
   note           String?

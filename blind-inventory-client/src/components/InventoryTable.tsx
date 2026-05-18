@@ -228,14 +228,22 @@ export default function InventoryTable({
                             ? item.totalLengthMm != null
                               ? `${item.totalLengthMm.toLocaleString()} mm`
                               : "—"
-                            : item.quantity}
+                            : item.stockType === "AREA"
+                              ? item.totalAreaMm2 != null
+                                ? `${(item.totalAreaMm2 / 1_000_000).toFixed(2)} m²`
+                                : "—"
+                              : item.quantity}
                         </td>
                         <td className="px-5 py-3 text-gray-500">
                           {item.stockType === "LENGTH"
                             ? item.minimumLengthMm != null
                               ? `${item.minimumLengthMm.toLocaleString()} mm`
                               : "—"
-                            : item.minimumStock}
+                            : item.stockType === "AREA"
+                              ? item.minimumAreaMm2 != null
+                                ? `${(item.minimumAreaMm2 / 1_000_000).toFixed(2)} m²`
+                                : "—"
+                              : item.minimumStock}
                         </td>
                         <td className="px-5 py-3 text-gray-500">{item.unit}</td>
                         <td className="px-5 py-3">

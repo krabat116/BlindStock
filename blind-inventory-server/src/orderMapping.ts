@@ -25,10 +25,11 @@ export type ParsedOrderRow = {
 
 export type PreviewComponent = {
   sourceRow: number
-  category: "Finish" | "Winder" | "Pin" | "Chain" | "Tube" | "Bracket" | "Cap" | "Spring Assist"
+  category: "Finish" | "Winder" | "Pin" | "Chain" | "Tube" | "Bracket" | "Cap" | "Spring Assist" | "Material"
   itemName: string
   quantity: number
-  lengthMm?: number // LENGTH 타입 부품(튜브 등)의 차감할 총 길이(mm)
+  lengthMm?: number // LENGTH 타입 부품의 차감할 총 길이(mm)
+  areaMm2?: number  // AREA 타입 부품(천)의 차감할 총 면적(mm²)
 }
 
 export function isSwivelOperation(operationRaw: string) {

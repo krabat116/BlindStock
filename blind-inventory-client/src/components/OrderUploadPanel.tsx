@@ -27,6 +27,12 @@ function getPreviewStatus(item: OrderPreviewItem) {
     return "ok"
   }
 
+  if (item.stockType === "AREA") {
+    if (item.currentAreaMm2 === null || item.areaMm2 === null) return "missing"
+    if (item.currentAreaMm2 < item.areaMm2) return "insufficient"
+    return "ok"
+  }
+
   if (item.currentStock === null) return "missing"
   if (item.currentStock < item.quantity) return "insufficient"
   return "ok"
@@ -78,6 +84,13 @@ export default function OrderUploadPanel({
         item.currentLengthMm !== null &&
         item.lengthMm !== null &&
         item.currentLengthMm < item.lengthMm
+      )
+    }
+    if (item.stockType === "AREA") {
+      return (
+        item.currentAreaMm2 !== null &&
+        item.areaMm2 !== null &&
+        item.currentAreaMm2 < item.areaMm2
       )
     }
     return item.currentStock !== null && item.currentStock < item.quantity
@@ -193,28 +206,43 @@ export default function OrderUploadPanel({
                   .map((item, index) => {
                   const status = getPreviewStatus(item)
                   const isLength = item.stockType === "LENGTH"
+                  const isArea = item.stockType === "AREA"
+
+                  function formatArea(mm2: number) {
+                    return `${(mm2 / 1_000_000).toFixed(2)} m²`
+                  }
 
                   const requiredDisplay = isLength
                     ? item.lengthMm !== null ? formatMm(item.lengthMm) : "—"
-                    : String(item.quantity)
+                    : isArea
+                      ? item.areaMm2 !== null ? formatArea(item.areaMm2) : "—"
+                      : String(item.quantity)
 
                   const inStockDisplay = isLength
                     ? item.currentLengthMm !== null ? formatMm(item.currentLengthMm) : "—"
-                    : item.currentStock !== null ? String(item.currentStock) : "—"
+                    : isArea
+                      ? item.currentAreaMm2 !== null ? formatArea(item.currentAreaMm2) : "—"
+                      : item.currentStock !== null ? String(item.currentStock) : "—"
 
                   const remainingValue = isLength
                     ? (item.currentLengthMm !== null && item.lengthMm !== null)
                       ? item.currentLengthMm - item.lengthMm
                       : null
-                    : item.currentStock !== null
-                      ? item.currentStock - item.quantity
-                      : null
+                    : isArea
+                      ? (item.currentAreaMm2 !== null && item.areaMm2 !== null)
+                        ? item.currentAreaMm2 - item.areaMm2
+                        : null
+                      : item.currentStock !== null
+                        ? item.currentStock - item.quantity
+                        : null
 
                   const remainingDisplay = remainingValue === null
                     ? "—"
                     : isLength
                       ? formatMm(remainingValue)
-                      : String(remainingValue)
+                      : isArea
+                        ? formatArea(remainingValue)
+                        : String(remainingValue)
 
                   return (
                     <tr
@@ -226,6 +254,9 @@ export default function OrderUploadPanel({
                         {item.itemName}
                         {isLength && (
                           <span className="ml-1.5 text-xs text-blue-500 font-normal">Length</span>
+                        )}
+                        {isArea && (
+                          <span className="ml-1.5 text-xs text-purple-500 font-normal">Area</span>
                         )}
                       </td>
                       <td className="px-4 py-3">{requiredDisplay}</td>

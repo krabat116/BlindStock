@@ -1,6 +1,7 @@
 import prisma from "../lib/prisma"
 import { parseRecentOrderSheet } from "../parseRecentOrderSheet"
 import { mapOrderRowToComponents, type PreviewComponent } from "../orderMapping"
+import { computeFabricAreaMm2 } from "../fabricPacking"
 import {
   normalizeCategoryName,
   normalizeItemName,
@@ -12,6 +13,7 @@ type DeductionRequestItem = {
   category: string
   quantity: number
   lengthMm?: number // LENGTH 타입 아이템의 차감할 총 길이(mm)
+  areaMm2?: number  // AREA 타입 아이템의 차감할 총 면적(mm²)
   sourceRows: number[]
 }
 
@@ -80,6 +82,41 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
 
   const aggregatedComponents = Array.from(aggregatedMap.values())
 
+  // ── Material (fabric/천) — strip-packing per material type ──────────
+  // Group parsed rows by material name, then compute fabric area via FFDH.
+  const materialGroupMap = new Map<
+    string,
+    { blinds: Array<{ widthMm: number; dropMm: number }>; sourceRows: number[] }
+  >()
+
+  for (const row of parsed.rows) {
+    if (!row.material || row.width === null || row.drop === null) continue
+    const materialName = row.material.trim().toUpperCase()
+    if (!materialName) continue
+
+    if (!materialGroupMap.has(materialName)) {
+      materialGroupMap.set(materialName, { blinds: [], sourceRows: [] })
+    }
+
+    const group = materialGroupMap.get(materialName)!
+    group.sourceRows.push(row.rowNumber)
+
+    const qty = row.qty > 0 ? row.qty : 1
+    for (let i = 0; i < qty; i++) {
+      group.blinds.push({ widthMm: row.width!, dropMm: row.drop! })
+    }
+  }
+
+  const materialComponents = Array.from(materialGroupMap.entries()).map(
+    ([materialName, { blinds, sourceRows }]) => ({
+      category: "Material" as const,
+      itemName: materialName,
+      quantity: blinds.length,
+      areaMm2: computeFabricAreaMm2(blinds),
+      sourceRows,
+    })
+  )
+
   const dbItems = await prisma.item.findMany({
     include: {
       category: true,
@@ -89,33 +126,64 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
   // Categories that are always LENGTH type — used to infer stockType
   // for items not yet in the database (missing items).
   const LENGTH_CATEGORIES = new Set(["Finish", "Tube"])
+  const AREA_CATEGORIES = new Set(["Material"])
 
-  const preview = aggregatedComponents.map((component) => {
-    const matchedItem = dbItems.find(
-      (item) =>
-        item.name.toUpperCase() === component.itemName.toUpperCase() &&
-        normalizeCategoryName(item.category.name) ===
-          normalizeCategoryName(component.category)
-    )
+  const preview = [
+    ...aggregatedComponents.map((component) => {
+      const matchedItem = dbItems.find(
+        (item) =>
+          item.name.toUpperCase() === component.itemName.toUpperCase() &&
+          normalizeCategoryName(item.category.name) ===
+            normalizeCategoryName(component.category)
+      )
 
-    const inferredStockType = LENGTH_CATEGORIES.has(component.category)
-      ? "LENGTH"
-      : "COUNT"
+      const inferredStockType = LENGTH_CATEGORIES.has(component.category)
+        ? "LENGTH"
+        : "COUNT"
 
-    return {
-      category: component.category,
-      itemName: component.itemName,
-      quantity: component.quantity,
-      // LENGTH 타입 아이템의 경우 총 차감 길이(mm)를 함께 반환
-      lengthMm: component.totalLengthMm > 0 ? component.totalLengthMm : null,
-      sourceRows: component.sourceRows,
-      matched: Boolean(matchedItem),
-      stockType: matchedItem?.stockType ?? inferredStockType,
-      currentStock: matchedItem?.quantity ?? null,
-      currentLengthMm: matchedItem?.totalLengthMm ?? null,
-      itemId: matchedItem?.id ?? null,
-    }
-  })
+      return {
+        category: component.category,
+        itemName: component.itemName,
+        quantity: component.quantity,
+        lengthMm: component.totalLengthMm > 0 ? component.totalLengthMm : null,
+        areaMm2: null as number | null,
+        sourceRows: component.sourceRows,
+        matched: Boolean(matchedItem),
+        stockType: (matchedItem?.stockType ?? inferredStockType) as string,
+        currentStock: matchedItem?.quantity ?? null,
+        currentLengthMm: matchedItem?.totalLengthMm ?? null,
+        currentAreaMm2: null as number | null,
+        itemId: matchedItem?.id ?? null,
+      }
+    }),
+    ...materialComponents.map((component) => {
+      const matchedItem = dbItems.find(
+        (item) =>
+          item.name.toUpperCase() === component.itemName.toUpperCase() &&
+          normalizeCategoryName(item.category.name) ===
+            normalizeCategoryName(component.category)
+      )
+
+      const inferredStockType = AREA_CATEGORIES.has(component.category)
+        ? "AREA"
+        : "COUNT"
+
+      return {
+        category: component.category,
+        itemName: component.itemName,
+        quantity: component.quantity,
+        lengthMm: null as number | null,
+        areaMm2: component.areaMm2,
+        sourceRows: component.sourceRows,
+        matched: Boolean(matchedItem),
+        stockType: (matchedItem?.stockType ?? inferredStockType) as string,
+        currentStock: null as number | null,
+        currentLengthMm: null as number | null,
+        currentAreaMm2: matchedItem?.totalAreaMm2 ?? null,
+        itemId: matchedItem?.id ?? null,
+      }
+    }),
+  ]
 
   return {
     parsedRowCount: parsed.rows.length,
@@ -266,6 +334,15 @@ export async function confirmOrderDeduction(
         ;(error as Error & { status?: number }).status = 400
         throw error
       }
+    } else if (dbItem.stockType === "AREA") {
+      // AREA 타입: totalAreaMm2 기준으로 재고 확인
+      if ((dbItem.totalAreaMm2 ?? 0) < (previewItem.areaMm2 ?? 0)) {
+        const error = new Error(
+          `Insufficient stock for ${previewItem.itemName}`
+        )
+        ;(error as Error & { status?: number }).status = 400
+        throw error
+      }
     } else {
       // COUNT 타입: quantity 기준으로 재고 확인
       if ((dbItem.quantity ?? 0) < previewItem.quantity) {
@@ -337,48 +414,38 @@ export async function confirmOrderDeduction(
 
     /**
      * Deduct stock and save inventory transactions
-     * LENGTH 타입은 totalLengthMm 차감, COUNT 타입은 quantity 차감
+     * LENGTH 타입은 totalLengthMm 차감
+     * AREA 타입은 totalAreaMm2 차감
+     * COUNT 타입은 quantity 차감
      */
     for (const previewItem of previewItems) {
       const dbItem = dbItems.find((item) => item.id === previewItem.itemId)!
+      const source = `${year}/${String(month).padStart(2, "0")} · #${orderSheetNo}`
+      const note = `Order upload deduction (rows: ${previewItem.sourceRows.join(", ")})`
 
       if (dbItem.stockType === "LENGTH" && previewItem.lengthMm) {
         await tx.item.update({
           where: { id: dbItem.id },
-          data: {
-            totalLengthMm: {
-              decrement: previewItem.lengthMm,
-            },
-          },
+          data: { totalLengthMm: { decrement: previewItem.lengthMm } },
         })
-
         await tx.transaction.create({
-          data: {
-            itemId: dbItem.id,
-            type: "out",
-            lengthMm: previewItem.lengthMm,
-            source: `${year}/${String(month).padStart(2, "0")} · #${orderSheetNo}`,
-            note: `Order upload deduction (rows: ${previewItem.sourceRows.join(", ")})`,
-          },
+          data: { itemId: dbItem.id, type: "out", lengthMm: previewItem.lengthMm, source, note },
+        })
+      } else if (dbItem.stockType === "AREA" && previewItem.areaMm2) {
+        await tx.item.update({
+          where: { id: dbItem.id },
+          data: { totalAreaMm2: { decrement: previewItem.areaMm2 } },
+        })
+        await tx.transaction.create({
+          data: { itemId: dbItem.id, type: "out", areaMm2: previewItem.areaMm2, source, note },
         })
       } else {
         await tx.item.update({
           where: { id: dbItem.id },
-          data: {
-            quantity: {
-              decrement: previewItem.quantity,
-            },
-          },
+          data: { quantity: { decrement: previewItem.quantity } },
         })
-
         await tx.transaction.create({
-          data: {
-            itemId: dbItem.id,
-            type: "out",
-            quantity: previewItem.quantity,
-            source: `${year}/${String(month).padStart(2, "0")} · #${orderSheetNo}`,
-            note: `Order upload deduction (rows: ${previewItem.sourceRows.join(", ")})`,
-          },
+          data: { itemId: dbItem.id, type: "out", quantity: previewItem.quantity, source, note },
         })
       }
     }

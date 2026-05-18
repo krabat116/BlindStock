@@ -108,6 +108,9 @@ export default function InventoryPage() {
     if (item.stockType === "LENGTH") {
       return (item.totalLengthMm ?? 0) <= (item.minimumLengthMm ?? 0)
     }
+    if (item.stockType === "AREA") {
+      return (item.totalAreaMm2 ?? 0) <= (item.minimumAreaMm2 ?? 0)
+    }
     return item.quantity <= item.minimumStock
   }).length
 
@@ -207,8 +210,8 @@ export default function InventoryPage() {
             itemName: item.itemName,
             category: item.category,
             quantity: item.quantity,
-            // LENGTH 타입 아이템의 경우 차감할 길이(mm)를 함께 전송
             ...(item.lengthMm !== null ? { lengthMm: item.lengthMm } : {}),
+            ...(item.areaMm2 !== null ? { areaMm2: item.areaMm2 } : {}),
             sourceRows: item.sourceRows,
           })),
       }
@@ -284,6 +287,9 @@ export default function InventoryPage() {
       if (item.stockType === "LENGTH") {
         return (item.currentLengthMm ?? 0) < (item.lengthMm ?? 0)
       }
+      if (item.stockType === "AREA") {
+        return (item.currentAreaMm2 ?? 0) < (item.areaMm2 ?? 0)
+      }
       return (item.currentStock ?? 0) < item.quantity
     })
 
@@ -302,6 +308,14 @@ export default function InventoryPage() {
           const res = await apiFetch(`/items/${item.itemId}/stock`, {
             method: "PATCH",
             body: JSON.stringify({ totalLengthMm: deficit, note: "Topped up via order preview" }),
+          })
+          if (!res.ok) throw new Error(`Failed to top up stock for ${item.itemName}`)
+        } else if (item.stockType === "AREA") {
+          const deficit = (item.areaMm2 ?? 0) - (item.currentAreaMm2 ?? 0)
+          if (deficit <= 0) continue
+          const res = await apiFetch(`/items/${item.itemId}/stock`, {
+            method: "PATCH",
+            body: JSON.stringify({ totalAreaMm2: deficit, note: "Topped up via order preview" }),
           })
           if (!res.ok) throw new Error(`Failed to top up stock for ${item.itemName}`)
         } else {
@@ -360,6 +374,9 @@ export default function InventoryPage() {
           if (item.stockType === "LENGTH") {
             return (item.currentLengthMm ?? 0) < (item.lengthMm ?? 0)
           }
+          if (item.stockType === "AREA") {
+            return (item.currentAreaMm2 ?? 0) < (item.areaMm2 ?? 0)
+          }
           return (item.currentStock ?? 0) < item.quantity
         }).length
 
@@ -388,6 +405,7 @@ export default function InventoryPage() {
               category: item.category,
               quantity: item.quantity,
               ...(item.lengthMm !== null ? { lengthMm: item.lengthMm } : {}),
+              ...(item.areaMm2 !== null ? { areaMm2: item.areaMm2 } : {}),
               sourceRows: item.sourceRows,
             })),
         }
@@ -457,7 +475,9 @@ export default function InventoryPage() {
     const body =
       item?.stockType === "LENGTH"
         ? { type, totalLengthMm: value, note }
-        : { type, quantity: value, note }
+        : item?.stockType === "AREA"
+          ? { type, totalAreaMm2: value, note }
+          : { type, quantity: value, note }
 
     const response = await apiFetch(`/items/${itemId}/adjust`, {
       method: "PATCH",
@@ -472,11 +492,12 @@ export default function InventoryPage() {
 
   async function handleSaveStock(itemId: number, value: number, note: string) {
     const item = items.find((i) => i.id === itemId)
-    // LENGTH 타입이면 totalLengthMm으로, COUNT 타입이면 quantity로 전송
     const body =
       item?.stockType === "LENGTH"
         ? { totalLengthMm: value, note }
-        : { quantity: value, note }
+        : item?.stockType === "AREA"
+          ? { totalAreaMm2: value, note }
+          : { quantity: value, note }
 
     const response = await apiFetch(`/items/${itemId}/stock`, {
       method: "PATCH",
@@ -489,13 +510,15 @@ export default function InventoryPage() {
   async function handleUpdateItemSettings(
     itemId: number,
     payload: {
-      stockType: "COUNT" | "LENGTH"
+      stockType: "COUNT" | "LENGTH" | "AREA"
       minimumStock?: number
       unit?: string
       defaultLengthMm?: number
       totalLengthMm?: number
       minimumLengthMm?: number
       cutoffLengthMm?: number
+      totalAreaMm2?: number
+      minimumAreaMm2?: number
     }
   ) {
     const response = await apiFetch(`/items/${itemId}/settings`, {

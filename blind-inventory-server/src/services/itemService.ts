@@ -22,6 +22,8 @@ export async function getItems() {
     totalLengthMm: item.totalLengthMm,
     minimumLengthMm: item.minimumLengthMm,
     cutoffLengthMm: item.cutoffLengthMm,
+    totalAreaMm2: item.totalAreaMm2,
+    minimumAreaMm2: item.minimumAreaMm2,
     category: item.category.name,
   }))
 }
@@ -33,7 +35,7 @@ export async function getItems() {
  */
 export async function updateItemStock(
   itemId: number,
-  payload: { quantity?: number; totalLengthMm?: number; note?: string }
+  payload: { quantity?: number; totalLengthMm?: number; totalAreaMm2?: number; note?: string }
 ) {
   if (!Number.isInteger(itemId)) {
     const error = new Error("Invalid item id")
@@ -72,31 +74,58 @@ export async function updateItemStock(
         data: { totalLengthMm: newTotalLengthMm },
         include: { category: true },
       })
-
       await tx.transaction.create({
         data: {
-          itemId,
-          type: "in",
-          lengthMm: addedLengthMm,
-          source: "manual",
+          itemId, type: "in", lengthMm: addedLengthMm, source: "manual",
           note: note?.trim() || `Added ${addedLengthMm.toLocaleString()}mm (new total: ${newTotalLengthMm.toLocaleString()}mm)`,
         },
       })
-
       return updatedItem
     })
 
     return {
-      id: result.id,
-      name: result.name,
-      stockType: result.stockType,
-      quantity: result.quantity,
-      minimumStock: result.minimumStock,
-      unit: result.unit,
-      defaultLengthMm: result.defaultLengthMm,
-      totalLengthMm: result.totalLengthMm,
-      minimumLengthMm: result.minimumLengthMm,
-      cutoffLengthMm: result.cutoffLengthMm,
+      id: result.id, name: result.name, stockType: result.stockType,
+      quantity: result.quantity, minimumStock: result.minimumStock, unit: result.unit,
+      defaultLengthMm: result.defaultLengthMm, totalLengthMm: result.totalLengthMm,
+      minimumLengthMm: result.minimumLengthMm, cutoffLengthMm: result.cutoffLengthMm,
+      totalAreaMm2: result.totalAreaMm2, minimumAreaMm2: result.minimumAreaMm2,
+      category: result.category.name,
+    }
+  }
+
+  if (existingItem.stockType === "AREA") {
+    const addedAreaMm2 = payload.totalAreaMm2 ?? 0
+
+    if (typeof addedAreaMm2 !== "number" || addedAreaMm2 < 0) {
+      const error = new Error("Added area must be a non-negative number")
+      ;(error as Error & { status?: number }).status = 400
+      throw error
+    }
+
+    const previousAreaMm2 = existingItem.totalAreaMm2 ?? 0
+    const newTotalAreaMm2 = previousAreaMm2 + addedAreaMm2
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedItem = await tx.item.update({
+        where: { id: itemId },
+        data: { totalAreaMm2: newTotalAreaMm2 },
+        include: { category: true },
+      })
+      await tx.transaction.create({
+        data: {
+          itemId, type: "in", areaMm2: addedAreaMm2, source: "manual",
+          note: note?.trim() || `Added ${(addedAreaMm2 / 1_000_000).toFixed(2)}m² (new total: ${(newTotalAreaMm2 / 1_000_000).toFixed(2)}m²)`,
+        },
+      })
+      return updatedItem
+    })
+
+    return {
+      id: result.id, name: result.name, stockType: result.stockType,
+      quantity: result.quantity, minimumStock: result.minimumStock, unit: result.unit,
+      defaultLengthMm: result.defaultLengthMm, totalLengthMm: result.totalLengthMm,
+      minimumLengthMm: result.minimumLengthMm, cutoffLengthMm: result.cutoffLengthMm,
+      totalAreaMm2: result.totalAreaMm2, minimumAreaMm2: result.minimumAreaMm2,
       category: result.category.name,
     }
   }
@@ -119,31 +148,21 @@ export async function updateItemStock(
       data: { quantity: newQuantity },
       include: { category: true },
     })
-
     await tx.transaction.create({
       data: {
-        itemId,
-        type: "in",
-        quantity: addedQuantity,
-        source: "manual",
+        itemId, type: "in", quantity: addedQuantity, source: "manual",
         note: note?.trim() || `Added ${addedQuantity} units (new total: ${newQuantity})`,
       },
     })
-
     return updatedItem
   })
 
   return {
-    id: result.id,
-    name: result.name,
-    stockType: result.stockType,
-    quantity: result.quantity,
-    minimumStock: result.minimumStock,
-    unit: result.unit,
-    defaultLengthMm: result.defaultLengthMm,
-    totalLengthMm: result.totalLengthMm,
-    minimumLengthMm: result.minimumLengthMm,
-    cutoffLengthMm: result.cutoffLengthMm,
+    id: result.id, name: result.name, stockType: result.stockType,
+    quantity: result.quantity, minimumStock: result.minimumStock, unit: result.unit,
+    defaultLengthMm: result.defaultLengthMm, totalLengthMm: result.totalLengthMm,
+    minimumLengthMm: result.minimumLengthMm, cutoffLengthMm: result.cutoffLengthMm,
+    totalAreaMm2: result.totalAreaMm2, minimumAreaMm2: result.minimumAreaMm2,
     category: result.category.name,
   }
 }
@@ -155,7 +174,7 @@ export async function updateItemStock(
 export async function updateItemSettings(
   itemId: number,
   payload: {
-    stockType: "COUNT" | "LENGTH"
+    stockType: "COUNT" | "LENGTH" | "AREA"
     // COUNT 전용
     quantity?: number
     minimumStock?: number
@@ -165,6 +184,9 @@ export async function updateItemSettings(
     totalLengthMm?: number
     minimumLengthMm?: number
     cutoffLengthMm?: number
+    // AREA 전용
+    totalAreaMm2?: number
+    minimumAreaMm2?: number
   }
 ) {
   if (!Number.isInteger(itemId)) {
@@ -192,15 +214,29 @@ export async function updateItemSettings(
         quantity: payload.quantity !== undefined ? payload.quantity : (existingItem.quantity ?? 0),
         minimumStock: payload.minimumStock ?? existingItem.minimumStock ?? 0,
         unit: payload.unit?.trim() ?? existingItem.unit ?? "pcs",
-        // LENGTH 필드 초기화
-        defaultLengthMm: null,
-        totalLengthMm: null,
-        minimumLengthMm: null,
-        cutoffLengthMm: null,
+        defaultLengthMm: null, totalLengthMm: null, minimumLengthMm: null, cutoffLengthMm: null,
+        totalAreaMm2: null, minimumAreaMm2: null,
       },
       include: { category: true },
     })
+    return { ...updatedItem, category: updatedItem.category.name }
+  }
 
+  if (payload.stockType === "AREA") {
+    const totalAreaMm2 = payload.totalAreaMm2 ?? existingItem.totalAreaMm2 ?? 0
+    const minimumAreaMm2 = payload.minimumAreaMm2 ?? existingItem.minimumAreaMm2 ?? 0
+
+    const updatedItem = await prisma.item.update({
+      where: { id: itemId },
+      data: {
+        stockType: "AREA",
+        totalAreaMm2,
+        minimumAreaMm2,
+        quantity: null, minimumStock: null, unit: "m²",
+        defaultLengthMm: null, totalLengthMm: null, minimumLengthMm: null, cutoffLengthMm: null,
+      },
+      include: { category: true },
+    })
     return { ...updatedItem, category: updatedItem.category.name }
   }
 
@@ -419,6 +455,43 @@ export async function createItem(input: CreateItemPayload) {
     }
   }
 
+  if (input.stockType === "AREA") {
+    const totalAreaMm2 = input.totalAreaMm2 ?? 0
+    const minimumAreaMm2 = input.minimumAreaMm2 ?? 0
+
+    const createdItem = await prisma.item.create({
+      data: {
+        name: trimmedName,
+        categoryId: input.categoryId,
+        stockType: "AREA",
+        totalAreaMm2,
+        minimumAreaMm2,
+        quantity: null, minimumStock: null, unit: "m²",
+        defaultLengthMm: null, totalLengthMm: null, minimumLengthMm: null,
+      },
+      include: { category: true },
+    })
+
+    if (totalAreaMm2 > 0) {
+      await prisma.transaction.create({
+        data: {
+          itemId: createdItem.id, type: "in", areaMm2: totalAreaMm2,
+          source: "initial_stock",
+          note: `Initial area stock for new item: ${trimmedName}`,
+        },
+      })
+    }
+
+    return {
+      id: createdItem.id, name: createdItem.name, stockType: createdItem.stockType,
+      quantity: createdItem.quantity, minimumStock: createdItem.minimumStock, unit: createdItem.unit,
+      defaultLengthMm: createdItem.defaultLengthMm, totalLengthMm: createdItem.totalLengthMm,
+      minimumLengthMm: createdItem.minimumLengthMm, cutoffLengthMm: createdItem.cutoffLengthMm,
+      totalAreaMm2: createdItem.totalAreaMm2, minimumAreaMm2: createdItem.minimumAreaMm2,
+      category: createdItem.category.name,
+    }
+  }
+
   if (typeof input.defaultLengthMm !== "number" || input.defaultLengthMm <= 0) {
     const error = new Error("Default length must be greater than 0")
     ;(error as Error & { status?: number }).status = 400
@@ -493,6 +566,7 @@ export async function adjustItemStock(
     type: "out" | "adjustment"
     quantity?: number
     totalLengthMm?: number
+    totalAreaMm2?: number
     note: string
   }
 ) {
@@ -580,6 +654,73 @@ export async function adjustItemStock(
       totalLengthMm: result.totalLengthMm,
       minimumLengthMm: result.minimumLengthMm,
       cutoffLengthMm: result.cutoffLengthMm,
+      totalAreaMm2: result.totalAreaMm2,
+      minimumAreaMm2: result.minimumAreaMm2,
+      category: result.category.name,
+    }
+  }
+
+  if (existingItem.stockType === "AREA") {
+    const value = payload.totalAreaMm2 ?? 0
+
+    if (typeof value !== "number" || value < 0) {
+      const error = new Error("Value must be a non-negative number")
+      ;(error as Error & { status?: number }).status = 400
+      throw error
+    }
+
+    const currentTotal = existingItem.totalAreaMm2 ?? 0
+
+    let newTotal: number
+    let transactionAreaMm2: number
+
+    if (type === "out") {
+      if (value > currentTotal) {
+        const error = new Error("Deduction amount exceeds current stock")
+        ;(error as Error & { status?: number }).status = 400
+        throw error
+      }
+      newTotal = currentTotal - value
+      transactionAreaMm2 = value
+    } else {
+      // adjustment: set exact value
+      newTotal = value
+      transactionAreaMm2 = Math.abs(value - currentTotal)
+    }
+
+    const result = await prisma.$transaction(async (tx) => {
+      const updatedItem = await tx.item.update({
+        where: { id: itemId },
+        data: { totalAreaMm2: newTotal },
+        include: { category: true },
+      })
+
+      await tx.transaction.create({
+        data: {
+          itemId,
+          type: type === "out" ? "out" : "adjustment",
+          areaMm2: transactionAreaMm2,
+          source: "manual",
+          note: note.trim(),
+        },
+      })
+
+      return updatedItem
+    })
+
+    return {
+      id: result.id,
+      name: result.name,
+      stockType: result.stockType,
+      quantity: result.quantity,
+      minimumStock: result.minimumStock,
+      unit: result.unit,
+      defaultLengthMm: result.defaultLengthMm,
+      totalLengthMm: result.totalLengthMm,
+      minimumLengthMm: result.minimumLengthMm,
+      cutoffLengthMm: result.cutoffLengthMm,
+      totalAreaMm2: result.totalAreaMm2,
+      minimumAreaMm2: result.minimumAreaMm2,
       category: result.category.name,
     }
   }
@@ -643,6 +784,8 @@ export async function adjustItemStock(
     totalLengthMm: result.totalLengthMm,
     minimumLengthMm: result.minimumLengthMm,
     cutoffLengthMm: result.cutoffLengthMm,
+    totalAreaMm2: result.totalAreaMm2,
+    minimumAreaMm2: result.minimumAreaMm2,
     category: result.category.name,
   }
 }
@@ -713,15 +856,18 @@ export async function bulkCreateMissingItems(
     }
 
     const isLength = normalizedCategory === "ALUMINIUM TUBES" || normalizedCategory === "FINISH"
+    const isArea = normalizedCategory === "MATERIAL"
 
     await prisma.item.create({
       data: {
         name: itemName,
         categoryId: dbCategory.id,
-        stockType: isLength ? "LENGTH" : "COUNT",
-        ...(isLength
-          ? { totalLengthMm: 0, minimumLengthMm: 0 }
-          : { quantity: 0, minimumStock: 0, unit: "pcs" }),
+        stockType: isArea ? "AREA" : isLength ? "LENGTH" : "COUNT",
+        ...(isArea
+          ? { totalAreaMm2: 0, minimumAreaMm2: 0, unit: "m²" }
+          : isLength
+            ? { totalLengthMm: 0, minimumLengthMm: 0 }
+            : { quantity: 0, minimumStock: 0, unit: "pcs" }),
       },
     })
 

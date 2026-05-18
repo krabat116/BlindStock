@@ -28,6 +28,7 @@ export default function AdjustStockModal({
   const [error, setError] = useState("")
 
   const isLength = item?.stockType === "LENGTH"
+  const isArea = item?.stockType === "AREA"
 
   useEffect(() => {
     if (isOpen && item) {
@@ -40,21 +41,30 @@ export default function AdjustStockModal({
 
   if (!isOpen || !item) return null
 
+  // parsedValue: user-entered value in display units (m² for AREA, mm for LENGTH, count for COUNT)
   const parsedValue = Number(value)
   const isValidValue = Number.isFinite(parsedValue) && parsedValue >= 0
 
-  const currentStock = isLength ? (item.totalLengthMm ?? 0) : (item.quantity ?? 0)
+  // Internal units: mm² for AREA, mm for LENGTH, count for COUNT
+  const parsedValueInternal = isArea ? Math.round(parsedValue * 1_000_000) : parsedValue
+
+  const currentStock = isArea
+    ? (item.totalAreaMm2 ?? 0)
+    : isLength
+      ? (item.totalLengthMm ?? 0)
+      : (item.quantity ?? 0)
 
   const previewNew = isValidValue
     ? adjustType === "out"
-      ? currentStock - parsedValue
-      : parsedValue
+      ? currentStock - parsedValueInternal
+      : parsedValueInternal
     : null
 
   const isOverDeduct =
-    adjustType === "out" && isValidValue && parsedValue > currentStock
+    adjustType === "out" && isValidValue && parsedValueInternal > currentStock
 
   function formatStock(val: number) {
+    if (isArea) return `${(val / 1_000_000).toFixed(2)} m²`
     return isLength ? `${val.toLocaleString()} mm` : `${val} ${item!.unit ?? ""}`
   }
 
@@ -79,7 +89,7 @@ export default function AdjustStockModal({
     try {
       setSubmitting(true)
       setError("")
-      await onSave(item!.id, adjustType, parsedValue, note)
+      await onSave(item!.id, adjustType, parsedValueInternal, note)
       onClose()
     } catch (err) {
       console.error(err)
@@ -114,16 +124,22 @@ export default function AdjustStockModal({
                   <p className="mt-1 font-medium text-gray-900">{formatStock(currentStock)}</p>
                 </div>
                 {isLength && (
-                  <>
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Min Threshold</p>
-                      <p className="mt-1 text-gray-700">
-                        {item.minimumLengthMm != null ? `${item.minimumLengthMm.toLocaleString()} mm` : "—"}
-                      </p>
-                    </div>
-                  </>
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Min Threshold</p>
+                    <p className="mt-1 text-gray-700">
+                      {item.minimumLengthMm != null ? `${item.minimumLengthMm.toLocaleString()} mm` : "—"}
+                    </p>
+                  </div>
                 )}
-                {!isLength && (
+                {isArea && (
+                  <div>
+                    <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Min Threshold</p>
+                    <p className="mt-1 text-gray-700">
+                      {item.minimumAreaMm2 != null ? `${(item.minimumAreaMm2 / 1_000_000).toFixed(2)} m²` : "—"}
+                    </p>
+                  </div>
+                )}
+                {!isLength && !isArea && (
                   <div>
                     <p className="text-xs font-medium uppercase tracking-wide text-gray-400">Min Stock</p>
                     <p className="mt-1 text-gray-700">{item.minimumStock} {item.unit}</p>
@@ -171,16 +187,16 @@ export default function AdjustStockModal({
               <div>
                 <label className="mb-2 block text-sm font-medium text-gray-700">
                   {adjustType === "out"
-                    ? isLength ? "Deduct (mm)" : "Deduct"
-                    : isLength ? "Set total to (mm)" : "Set stock to"}
+                    ? isLength ? "Deduct (mm)" : isArea ? "Deduct (m²)" : "Deduct"
+                    : isLength ? "Set total to (mm)" : isArea ? "Set total to (m²)" : "Set stock to"}
                 </label>
                 <input
                   type="number"
                   min="0"
-                  step={isLength ? "1" : "1"}
+                  step={isArea ? "0.01" : "1"}
                   value={value}
                   onChange={(e) => setValue(e.target.value)}
-                  placeholder={isLength ? "e.g. 3000" : "e.g. 20"}
+                  placeholder={isLength ? "e.g. 3000" : isArea ? "e.g. 50.00" : "e.g. 20"}
                   className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
                 />
               </div>
@@ -195,7 +211,11 @@ export default function AdjustStockModal({
                       ? "border-gray-200 bg-gray-50 text-gray-400"
                       : isOverDeduct
                       ? "border-red-200 bg-red-50 text-red-700"
-                      : previewNew < (isLength ? (item.minimumLengthMm ?? 0) : (item.minimumStock ?? 0))
+                      : previewNew < (isArea
+                          ? (item.minimumAreaMm2 ?? 0)
+                          : isLength
+                            ? (item.minimumLengthMm ?? 0)
+                            : (item.minimumStock ?? 0))
                       ? "border-amber-200 bg-amber-50 text-amber-800"
                       : "border-blue-100 bg-blue-50 text-blue-900"
                   }`}
