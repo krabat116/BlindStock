@@ -4,7 +4,7 @@ import type { Category } from "../types/category"
 import type { CreateItemPayload } from "../types/createItemPayload"
 
 type ItemSettingsPayload = {
-  stockType: "COUNT" | "LENGTH"
+  stockType: "COUNT" | "LENGTH" | "AREA"
   quantity?: number
   minimumStock?: number
   unit?: string
@@ -12,6 +12,9 @@ type ItemSettingsPayload = {
   totalLengthMm?: number
   minimumLengthMm?: number
   cutoffLengthMm?: number
+  totalAreaMm2?: number
+  minimumAreaMm2?: number
+  rollWidthMm?: number
 }
 
 type ManageItemsModalProps = {
@@ -28,12 +31,17 @@ type ManageItemsModalProps = {
   initialSettingsItemId?: number | null
 }
 
-type StockTypeTab = "COUNT" | "LENGTH"
+type StockTypeTab = "COUNT" | "LENGTH" | "AREA"
 
 const LENGTH_ONLY_CATEGORIES = ["ALUMINIUM TUBES", "FINISH"]
+const AREA_ONLY_CATEGORIES = ["FABRIC"]
 
 function isLengthCategory(name: string) {
   return LENGTH_ONLY_CATEGORIES.includes(name.toUpperCase())
+}
+
+function isAreaCategory(name: string) {
+  return AREA_ONLY_CATEGORIES.includes(name.toUpperCase())
 }
 
 export default function ManageItemsModal({
@@ -69,15 +77,22 @@ export default function ManageItemsModal({
     if (stockTypeTab === "LENGTH") {
       return categories.filter((c) => isLengthCategory(c.name))
     }
-    return categories.filter((c) => !isLengthCategory(c.name))
+    if (stockTypeTab === "AREA") {
+      return categories.filter((c) => isAreaCategory(c.name))
+    }
+    return categories.filter((c) => !isLengthCategory(c.name) && !isAreaCategory(c.name))
   }, [categories, stockTypeTab])
 
   function handleTabChange(tab: StockTypeTab) {
     setStockTypeTab(tab)
-    const nextFiltered =
-      tab === "LENGTH"
-        ? categories.filter((c) => isLengthCategory(c.name))
-        : categories.filter((c) => !isLengthCategory(c.name))
+    let nextFiltered: typeof categories
+    if (tab === "LENGTH") {
+      nextFiltered = categories.filter((c) => isLengthCategory(c.name))
+    } else if (tab === "AREA") {
+      nextFiltered = categories.filter((c) => isAreaCategory(c.name))
+    } else {
+      nextFiltered = categories.filter((c) => !isLengthCategory(c.name) && !isAreaCategory(c.name))
+    }
     if (nextFiltered.length > 0 && !nextFiltered.find((c) => c.id === selectedCategoryId)) {
       setSelectedCategoryId(nextFiltered[0].id)
     }
@@ -98,6 +113,12 @@ export default function ManageItemsModal({
   const [settingsStickCount, setSettingsStickCount] = useState("0")
   const [settingsMinimumLengthMm, setSettingsMinimumLengthMm] = useState("0")
   const [settingsCutoffLengthMm, setSettingsCutoffLengthMm] = useState("800")
+  const [settingsMinimumAreaM2, setSettingsMinimumAreaM2] = useState("0")
+  const [settingsRollWidthMm, setSettingsRollWidthMm] = useState("3000")
+
+  const [rollWidthMm, setRollWidthMm] = useState("3000")
+  const [rollLengthM, setRollLengthM] = useState("0")
+  const [minimumAreaM2, setMinimumAreaM2] = useState("0")
 
   const settingsTotalLengthMm = useMemo(() => {
     const d = Number(settingsDefaultLengthMm)
@@ -132,6 +153,12 @@ export default function ManageItemsModal({
             setSettingsStickCount(defaultLen > 0 ? String(Math.round(currentTotal / defaultLen)) : "0")
             setSettingsMinimumLengthMm(String(item.minimumLengthMm ?? 0))
             setSettingsCutoffLengthMm(String(item.cutoffLengthMm ?? 800))
+          } else if (item.stockType === "AREA") {
+            setSettingsMinimumAreaM2(String((item.minimumAreaMm2 ?? 0) / 1_000_000))
+            setSettingsRollWidthMm(String(item.rollWidthMm ?? 3000))
+            setSettingsDefaultLengthMm("4000")
+            setSettingsStickCount("0")
+            setSettingsMinimumLengthMm("0")
           } else {
             setSettingsMinimumStock(String(item.minimumStock ?? 0))
             setSettingsUnit(item.unit ?? "pcs")
@@ -181,6 +208,9 @@ export default function ManageItemsModal({
     setStickCount("0")
     setMinimumLengthMm("0")
     setCutoffLengthMm("800")
+    setRollWidthMm("3000")
+    setRollLengthM("0")
+    setMinimumAreaM2("0")
     setStockTypeTab("COUNT")
   }
 
@@ -229,6 +259,34 @@ export default function ManageItemsModal({
           quantity: parsedQuantity,
           minimumStock: parsedMinimumStock,
           unit: unit.trim(),
+        })
+      } else if (stockTypeTab === "AREA") {
+        const parsedRollWidthMm = Number(rollWidthMm)
+        const parsedRollLengthM = Number(rollLengthM)
+        const parsedMinAreaM2 = Number(minimumAreaM2)
+
+        if (!Number.isFinite(parsedRollWidthMm) || parsedRollWidthMm <= 0) {
+          setError("Roll width must be greater than 0.")
+          return
+        }
+
+        if (!Number.isFinite(parsedRollLengthM) || parsedRollLengthM < 0) {
+          setError("Initial roll length must be a non-negative number.")
+          return
+        }
+
+        if (!Number.isFinite(parsedMinAreaM2) || parsedMinAreaM2 < 0) {
+          setError("Minimum area must be a non-negative number.")
+          return
+        }
+
+        await onCreateItem({
+          name: name.trim(),
+          categoryId: selectedCategoryId,
+          stockType: "AREA",
+          totalAreaMm2: Math.round(parsedRollWidthMm * parsedRollLengthM * 1000),
+          minimumAreaMm2: Math.round(parsedMinAreaM2 * 1_000_000),
+          rollWidthMm: Math.round(parsedRollWidthMm),
         })
       } else {
         const parsedDefaultLengthMm = Number(defaultLengthMm)
@@ -315,6 +373,12 @@ export default function ManageItemsModal({
       setSettingsStickCount(defaultLen > 0 ? String(Math.round(currentTotal / defaultLen)) : "0")
       setSettingsMinimumLengthMm(String(item.minimumLengthMm ?? 0))
       setSettingsCutoffLengthMm(String(item.cutoffLengthMm ?? 800))
+    } else if (item.stockType === "AREA") {
+      setSettingsMinimumAreaM2(String((item.minimumAreaMm2 ?? 0) / 1_000_000))
+      setSettingsRollWidthMm(String(item.rollWidthMm ?? 3000))
+      setSettingsDefaultLengthMm("4000")
+      setSettingsStickCount("0")
+      setSettingsMinimumLengthMm("0")
     } else {
       setSettingsMinimumStock(String(item.minimumStock ?? 0))
       setSettingsUnit(item.unit ?? "pcs")
@@ -361,6 +425,23 @@ export default function ManageItemsModal({
           minimumLengthMm: minL,
           cutoffLengthMm: cutoff,
         })
+      } else if (settingsStockType === "AREA") {
+        const minA = Number(settingsMinimumAreaM2)
+        const rw = Number(settingsRollWidthMm)
+        if (!Number.isFinite(minA) || minA < 0) {
+          setSettingsError("Minimum area must be a non-negative number.")
+          return
+        }
+        if (!Number.isFinite(rw) || rw <= 0) {
+          setSettingsError("Roll width must be greater than 0.")
+          return
+        }
+
+        await onUpdateItemSettings(settingsItemId, {
+          stockType: "AREA",
+          minimumAreaMm2: Math.round(minA * 1_000_000),
+          rollWidthMm: Math.round(rw),
+        })
       } else {
         const minS = Number(settingsMinimumStock)
         if (!Number.isFinite(minS) || minS < 0) {
@@ -406,6 +487,12 @@ export default function ManageItemsModal({
           minimumStock: Number.isFinite(minStockVal) ? minStockVal : (item.minimumStock ?? 0),
           unit: item.unit ?? "pcs",
         })
+      } else if (item.stockType === "AREA") {
+        await onUpdateItemSettings(item.id, {
+          stockType: "AREA",
+          totalAreaMm2: Number.isFinite(stockVal) ? Math.round(stockVal * 1_000_000) : (item.totalAreaMm2 ?? 0),
+          minimumAreaMm2: Number.isFinite(minStockVal) ? Math.round(minStockVal * 1_000_000) : (item.minimumAreaMm2 ?? 0),
+        })
       } else {
         await onUpdateItemSettings(item.id, {
           stockType: "LENGTH",
@@ -442,6 +529,11 @@ export default function ManageItemsModal({
   }
 
   function renderCurrentStock(item: InventoryItem) {
+    if (item.stockType === "AREA") {
+      return item.totalAreaMm2 != null
+        ? `${(item.totalAreaMm2 / 1_000_000).toFixed(2)} m²`
+        : "-"
+    }
     if (item.stockType === "LENGTH") {
       return item.totalLengthMm != null
         ? `${item.totalLengthMm.toLocaleString()} mm`
@@ -452,6 +544,11 @@ export default function ManageItemsModal({
   }
 
   function renderMinimumStock(item: InventoryItem) {
+    if (item.stockType === "AREA") {
+      return item.minimumAreaMm2 != null
+        ? `${(item.minimumAreaMm2 / 1_000_000).toFixed(2)} m²`
+        : "-"
+    }
     if (item.stockType === "LENGTH") {
       return item.minimumLengthMm != null
         ? `${item.minimumLengthMm.toLocaleString()} mm`
@@ -462,9 +559,8 @@ export default function ManageItemsModal({
   }
 
   function renderUnit(item: InventoryItem) {
-    if (item.stockType === "LENGTH") {
-      return "mm"
-    }
+    if (item.stockType === "AREA") return "m²"
+    if (item.stockType === "LENGTH") return "mm"
 
     return item.unit ?? "-"
   }
@@ -542,7 +638,7 @@ export default function ManageItemsModal({
                       </td>
                       <td className="px-4 py-3">{item.category}</td>
                       <td className="px-4 py-3">
-                        {item.stockType === "LENGTH" ? "Length" : "Count"}
+                        {item.stockType === "AREA" ? "Area" : item.stockType === "LENGTH" ? "Length" : "Count"}
                       </td>
                       <td className="px-4 py-3">
                         {editingItemId === item.id ? (
@@ -550,12 +646,16 @@ export default function ManageItemsModal({
                             <input
                               type="number"
                               min="0"
+                              step={item.stockType === "AREA" ? "0.01" : "1"}
                               value={editingStock}
                               onChange={(e) => setEditingStock(e.target.value)}
                               className="w-24 rounded-lg border border-gray-300 px-2 py-1.5 text-sm outline-none focus:border-blue-500"
                             />
                             {item.stockType === "LENGTH" && (
                               <span className="text-xs text-gray-400">mm</span>
+                            )}
+                            {item.stockType === "AREA" && (
+                              <span className="text-xs text-gray-400">m²</span>
                             )}
                           </div>
                         ) : (
@@ -568,12 +668,16 @@ export default function ManageItemsModal({
                             <input
                               type="number"
                               min="0"
+                              step={item.stockType === "AREA" ? "0.01" : "1"}
                               value={editingMinStock}
                               onChange={(e) => setEditingMinStock(e.target.value)}
                               className="w-24 rounded-lg border border-gray-300 px-2 py-1.5 text-sm outline-none focus:border-blue-500"
                             />
                             {item.stockType === "LENGTH" && (
                               <span className="text-xs text-gray-400">mm</span>
+                            )}
+                            {item.stockType === "AREA" && (
+                              <span className="text-xs text-gray-400">m²</span>
                             )}
                           </div>
                         ) : (
@@ -610,14 +714,18 @@ export default function ManageItemsModal({
                                   setEditingItemId(item.id)
                                   setEditingName(item.name)
                                   setEditingStock(
-                                    item.stockType === "LENGTH"
-                                      ? String(item.totalLengthMm ?? 0)
-                                      : String(item.quantity ?? 0)
+                                    item.stockType === "AREA"
+                                      ? String((item.totalAreaMm2 ?? 0) / 1_000_000)
+                                      : item.stockType === "LENGTH"
+                                        ? String(item.totalLengthMm ?? 0)
+                                        : String(item.quantity ?? 0)
                                   )
                                   setEditingMinStock(
-                                    item.stockType === "LENGTH"
-                                      ? String(item.minimumLengthMm ?? 0)
-                                      : String(item.minimumStock ?? 0)
+                                    item.stockType === "AREA"
+                                      ? String((item.minimumAreaMm2 ?? 0) / 1_000_000)
+                                      : item.stockType === "LENGTH"
+                                        ? String(item.minimumLengthMm ?? 0)
+                                        : String(item.minimumStock ?? 0)
                                   )
                                 }}
                                 className="rounded-lg border border-gray-300 px-3 py-2 text-xs font-medium text-gray-700 hover:bg-gray-50"
@@ -699,10 +807,51 @@ export default function ManageItemsModal({
                     >
                       Length
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => setSettingsStockType("AREA")}
+                      className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                        settingsStockType === "AREA"
+                          ? "bg-purple-700 text-white shadow"
+                          : "text-gray-500 hover:text-gray-800"
+                      }`}
+                    >
+                      Area
+                    </button>
                   </div>
 
                   <div className="space-y-4">
-                    {settingsStockType === "COUNT" ? (
+                    {settingsStockType === "AREA" ? (
+                      <div className="space-y-4">
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-gray-700">
+                            Roll Width (mm)
+                          </label>
+                          <input
+                            type="number"
+                            min="1"
+                            value={settingsRollWidthMm}
+                            onChange={(e) => setSettingsRollWidthMm(e.target.value)}
+                            placeholder="e.g. 3000"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                          />
+                        </div>
+                        <div>
+                          <label className="mb-2 block text-sm font-medium text-gray-700">
+                            Minimum Area (m²)
+                          </label>
+                          <input
+                            type="number"
+                            min="0"
+                            step="0.01"
+                            value={settingsMinimumAreaM2}
+                            onChange={(e) => setSettingsMinimumAreaM2(e.target.value)}
+                            placeholder="e.g. 10.00"
+                            className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                          />
+                        </div>
+                      </div>
+                    ) : settingsStockType === "COUNT" ? (
                       <div className="grid gap-4 sm:grid-cols-2">
                         <div>
                           <label className="mb-2 block text-sm font-medium text-gray-700">
@@ -802,7 +951,7 @@ export default function ManageItemsModal({
                     {settingsStockType !== settingItem.stockType && (
                       <p className="text-xs text-amber-600 bg-amber-50 rounded-lg px-3 py-2">
                         Stock type will be changed. Existing{" "}
-                        {settingItem.stockType === "COUNT" ? "count" : "length"} data will be reset.
+                        {settingItem.stockType === "COUNT" ? "count" : settingItem.stockType === "LENGTH" ? "length" : "area"} data will be reset.
                       </p>
                     )}
 
@@ -903,6 +1052,18 @@ export default function ManageItemsModal({
                 >
                   Length
                 </button>
+
+                <button
+                  type="button"
+                  onClick={() => handleTabChange("AREA")}
+                  className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                    stockTypeTab === "AREA"
+                      ? "bg-purple-700 text-white shadow"
+                      : "text-gray-500 hover:text-gray-800"
+                  }`}
+                >
+                  Area
+                </button>
               </div>
 
               <form onSubmit={handleCreateItemSubmit} className="space-y-4">
@@ -932,15 +1093,71 @@ export default function ManageItemsModal({
                     value={name}
                     onChange={(e) => setName(e.target.value)}
                     placeholder={
-                      stockTypeTab === "COUNT"
-                        ? "e.g. Black Winder"
-                        : "e.g. 38MM TUBE"
+                      stockTypeTab === "AREA"
+                        ? "e.g. TITANIUM WHITE"
+                        : stockTypeTab === "COUNT"
+                          ? "e.g. Black Winder"
+                          : "e.g. 38MM TUBE"
                     }
                     className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
                   />
                 </div>
 
-                {stockTypeTab === "COUNT" ? (
+                {stockTypeTab === "AREA" ? (
+                  <>
+                    <div className="grid gap-4 sm:grid-cols-2">
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700">
+                          Roll Width (mm)
+                        </label>
+                        <input
+                          type="number"
+                          min="1"
+                          value={rollWidthMm}
+                          onChange={(e) => setRollWidthMm(e.target.value)}
+                          placeholder="e.g. 3000"
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                        />
+                      </div>
+                      <div>
+                        <label className="mb-2 block text-sm font-medium text-gray-700">
+                          Initial Roll Length (m)
+                        </label>
+                        <input
+                          type="number"
+                          min="0"
+                          step="0.1"
+                          value={rollLengthM}
+                          onChange={(e) => setRollLengthM(e.target.value)}
+                          placeholder="e.g. 50"
+                          className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                        />
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-700">
+                        Initial Area (computed)
+                      </label>
+                      <div className="rounded-lg border border-gray-200 bg-white px-3 py-2 text-sm font-medium text-gray-900">
+                        {(Number(rollWidthMm) * Number(rollLengthM) / 1000).toFixed(3)} m²
+                      </div>
+                    </div>
+                    <div>
+                      <label className="mb-2 block text-sm font-medium text-gray-700">
+                        Minimum Area (m²)
+                      </label>
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={minimumAreaM2}
+                        onChange={(e) => setMinimumAreaM2(e.target.value)}
+                        placeholder="e.g. 10.00"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                      />
+                    </div>
+                  </>
+                ) : stockTypeTab === "COUNT" ? (
                   <>
                     <div>
                       <label className="mb-2 block text-sm font-medium text-gray-700">

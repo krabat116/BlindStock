@@ -32,13 +32,14 @@ router.get("/", async (_req, res) => {
  * Update stock for one item
  * COUNT 타입: { quantity, note }
  * LENGTH 타입: { totalLengthMm, note }
+ * AREA 타입: { totalAreaMm2, note }
  */
 router.patch("/:id/stock", async (req, res) => {
   try {
     const itemId = Number(req.params.id)
-    const { quantity, totalLengthMm, note } = req.body
+    const { quantity, totalLengthMm, totalAreaMm2, note } = req.body
 
-    const updatedItem = await updateItemStock(itemId, { quantity, totalLengthMm, note })
+    const updatedItem = await updateItemStock(itemId, { quantity, totalLengthMm, totalAreaMm2, note })
     res.json(updatedItem)
   } catch (error) {
     console.error("Failed to update stock:", error)
@@ -64,14 +65,14 @@ router.patch("/:id/stock", async (req, res) => {
 router.patch("/:id/adjust", async (req, res) => {
   try {
     const itemId = Number(req.params.id)
-    const { type, quantity, totalLengthMm, note } = req.body
+    const { type, quantity, totalLengthMm, totalAreaMm2, note } = req.body
 
     if (type !== "out" && type !== "adjustment") {
       res.status(400).json({ message: "type must be 'out' or 'adjustment'" })
       return
     }
 
-    const updatedItem = await adjustItemStock(itemId, { type, quantity, totalLengthMm, note })
+    const updatedItem = await adjustItemStock(itemId, { type, quantity, totalLengthMm, totalAreaMm2, note })
     res.json(updatedItem)
   } catch (error) {
     console.error("Failed to adjust stock:", error)

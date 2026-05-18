@@ -24,6 +24,7 @@ export async function getItems() {
     cutoffLengthMm: item.cutoffLengthMm,
     totalAreaMm2: item.totalAreaMm2,
     minimumAreaMm2: item.minimumAreaMm2,
+    rollWidthMm: item.rollWidthMm,
     category: item.category.name,
   }))
 }
@@ -89,6 +90,7 @@ export async function updateItemStock(
       defaultLengthMm: result.defaultLengthMm, totalLengthMm: result.totalLengthMm,
       minimumLengthMm: result.minimumLengthMm, cutoffLengthMm: result.cutoffLengthMm,
       totalAreaMm2: result.totalAreaMm2, minimumAreaMm2: result.minimumAreaMm2,
+      rollWidthMm: result.rollWidthMm,
       category: result.category.name,
     }
   }
@@ -126,6 +128,7 @@ export async function updateItemStock(
       defaultLengthMm: result.defaultLengthMm, totalLengthMm: result.totalLengthMm,
       minimumLengthMm: result.minimumLengthMm, cutoffLengthMm: result.cutoffLengthMm,
       totalAreaMm2: result.totalAreaMm2, minimumAreaMm2: result.minimumAreaMm2,
+      rollWidthMm: result.rollWidthMm,
       category: result.category.name,
     }
   }
@@ -187,6 +190,7 @@ export async function updateItemSettings(
     // AREA 전용
     totalAreaMm2?: number
     minimumAreaMm2?: number
+    rollWidthMm?: number
   }
 ) {
   if (!Number.isInteger(itemId)) {
@@ -215,7 +219,7 @@ export async function updateItemSettings(
         minimumStock: payload.minimumStock ?? existingItem.minimumStock ?? 0,
         unit: payload.unit?.trim() ?? existingItem.unit ?? "pcs",
         defaultLengthMm: null, totalLengthMm: null, minimumLengthMm: null, cutoffLengthMm: null,
-        totalAreaMm2: null, minimumAreaMm2: null,
+        totalAreaMm2: null, minimumAreaMm2: null, rollWidthMm: null,
       },
       include: { category: true },
     })
@@ -225,6 +229,7 @@ export async function updateItemSettings(
   if (payload.stockType === "AREA") {
     const totalAreaMm2 = payload.totalAreaMm2 ?? existingItem.totalAreaMm2 ?? 0
     const minimumAreaMm2 = payload.minimumAreaMm2 ?? existingItem.minimumAreaMm2 ?? 0
+    const rollWidthMm = payload.rollWidthMm !== undefined ? payload.rollWidthMm : (existingItem.rollWidthMm ?? null)
 
     const updatedItem = await prisma.item.update({
       where: { id: itemId },
@@ -232,6 +237,7 @@ export async function updateItemSettings(
         stockType: "AREA",
         totalAreaMm2,
         minimumAreaMm2,
+        rollWidthMm,
         quantity: null, minimumStock: null, unit: "m²",
         defaultLengthMm: null, totalLengthMm: null, minimumLengthMm: null, cutoffLengthMm: null,
       },
@@ -458,6 +464,7 @@ export async function createItem(input: CreateItemPayload) {
   if (input.stockType === "AREA") {
     const totalAreaMm2 = input.totalAreaMm2 ?? 0
     const minimumAreaMm2 = input.minimumAreaMm2 ?? 0
+    const rollWidthMm = input.rollWidthMm ?? null
 
     const createdItem = await prisma.item.create({
       data: {
@@ -466,6 +473,7 @@ export async function createItem(input: CreateItemPayload) {
         stockType: "AREA",
         totalAreaMm2,
         minimumAreaMm2,
+        rollWidthMm,
         quantity: null, minimumStock: null, unit: "m²",
         defaultLengthMm: null, totalLengthMm: null, minimumLengthMm: null,
       },
@@ -488,6 +496,7 @@ export async function createItem(input: CreateItemPayload) {
       defaultLengthMm: createdItem.defaultLengthMm, totalLengthMm: createdItem.totalLengthMm,
       minimumLengthMm: createdItem.minimumLengthMm, cutoffLengthMm: createdItem.cutoffLengthMm,
       totalAreaMm2: createdItem.totalAreaMm2, minimumAreaMm2: createdItem.minimumAreaMm2,
+      rollWidthMm: createdItem.rollWidthMm,
       category: createdItem.category.name,
     }
   }
@@ -656,6 +665,7 @@ export async function adjustItemStock(
       cutoffLengthMm: result.cutoffLengthMm,
       totalAreaMm2: result.totalAreaMm2,
       minimumAreaMm2: result.minimumAreaMm2,
+      rollWidthMm: result.rollWidthMm,
       category: result.category.name,
     }
   }
@@ -721,6 +731,7 @@ export async function adjustItemStock(
       cutoffLengthMm: result.cutoffLengthMm,
       totalAreaMm2: result.totalAreaMm2,
       minimumAreaMm2: result.minimumAreaMm2,
+      rollWidthMm: result.rollWidthMm,
       category: result.category.name,
     }
   }
@@ -856,7 +867,7 @@ export async function bulkCreateMissingItems(
     }
 
     const isLength = normalizedCategory === "ALUMINIUM TUBES" || normalizedCategory === "FINISH"
-    const isArea = normalizedCategory === "MATERIAL"
+    const isArea = normalizedCategory === "FABRIC"
 
     await prisma.item.create({
       data: {
@@ -864,7 +875,7 @@ export async function bulkCreateMissingItems(
         categoryId: dbCategory.id,
         stockType: isArea ? "AREA" : isLength ? "LENGTH" : "COUNT",
         ...(isArea
-          ? { totalAreaMm2: 0, minimumAreaMm2: 0, unit: "m²" }
+          ? { totalAreaMm2: 0, minimumAreaMm2: 0, rollWidthMm: null, unit: "m²" }
           : isLength
             ? { totalLengthMm: 0, minimumLengthMm: 0 }
             : { quantity: 0, minimumStock: 0, unit: "pcs" }),

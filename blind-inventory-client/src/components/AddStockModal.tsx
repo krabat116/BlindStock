@@ -20,6 +20,8 @@ export default function AddStockModal({
   const [quantity, setQuantity] = useState("")
   // LENGTH 타입용
   const [stickCount, setStickCount] = useState("")
+  // AREA 타입 — roll width 설정 시 사용
+  const [rollLengthM, setRollLengthM] = useState("")
   const [note, setNote] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState("")
@@ -41,18 +43,24 @@ export default function AddStockModal({
     return Math.round(count * effectiveLengthPerStick)
   }, [isLength, stickCount, effectiveLengthPerStick, item?.defaultLengthMm])
 
-  // AREA 타입: 사용자가 m² 입력 → mm²로 변환
+  // AREA 타입: rollWidthMm 설정 시 m 입력 → mm²; 미설정 시 m² 입력 → mm²
   const addedAreaMm2 = useMemo(() => {
     if (!isArea) return 0
+    if (item?.rollWidthMm) {
+      const lengthM = Number(rollLengthM)
+      if (!Number.isFinite(lengthM) || lengthM < 0) return 0
+      return Math.round(item.rollWidthMm * lengthM * 1000)
+    }
     const m2 = Number(quantity)
     if (!Number.isFinite(m2) || m2 < 0) return 0
     return Math.round(m2 * 1_000_000)
-  }, [isArea, quantity])
+  }, [isArea, item?.rollWidthMm, rollLengthM, quantity])
 
   useEffect(() => {
     if (item) {
       setStickCount("")
       setQuantity("")
+      setRollLengthM("")
       setNote("")
       setError("")
     }
@@ -78,10 +86,18 @@ export default function AddStockModal({
         }
         await onSave(item!.id, totalLengthMm, note)
       } else if (isArea) {
-        const m2 = Number(quantity)
-        if (!Number.isFinite(m2) || m2 < 0) {
-          setError("Please enter a valid non-negative number.")
-          return
+        if (item!.rollWidthMm) {
+          const lengthM = Number(rollLengthM)
+          if (!Number.isFinite(lengthM) || lengthM < 0) {
+            setError("Please enter a valid non-negative number.")
+            return
+          }
+        } else {
+          const m2 = Number(quantity)
+          if (!Number.isFinite(m2) || m2 < 0) {
+            setError("Please enter a valid non-negative number.")
+            return
+          }
         }
         await onSave(item!.id, addedAreaMm2, note)
       } else {
@@ -111,7 +127,9 @@ export default function AddStockModal({
             {isLength
               ? "Enter the number of sticks to add. The value will be added to the current inventory."
               : isArea
-                ? "Enter the area to add (m²). The value will be added to the current inventory."
+                ? item.rollWidthMm
+                  ? "Enter the roll length to add (m). Area will be computed automatically."
+                  : "Enter the area to add (m²). The value will be added to the current inventory."
                 : "Enter the quantity to add. The value will be added to the current inventory."}
           </p>
         </div>
@@ -135,6 +153,14 @@ export default function AddStockModal({
                           : "—"}
                       </p>
                     </div>
+                    {item.rollWidthMm != null && (
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Roll Width</p>
+                        <p className="mt-1 text-gray-700">
+                          {(item.rollWidthMm / 1000).toFixed(2)} m ({item.rollWidthMm.toLocaleString()} mm)
+                        </p>
+                      </div>
+                    )}
                     <div>
                       <p className="text-xs font-medium uppercase tracking-wide text-gray-500">Min Stock Threshold</p>
                       <p className="mt-1 text-gray-700">
@@ -146,27 +172,59 @@ export default function AddStockModal({
                   </div>
                 </div>
 
+                {item.rollWidthMm == null && (
+                  <p className="rounded-lg bg-amber-50 border border-amber-200 px-3 py-2 text-sm text-amber-700">
+                    Roll width not configured — go to{" "}
+                    {onGoToSettings ? (
+                      <button
+                        type="button"
+                        onClick={onGoToSettings}
+                        className="underline font-medium hover:text-amber-900"
+                      >
+                        Settings
+                      </button>
+                    ) : (
+                      "Manage items → Settings"
+                    )}{" "}
+                    to enable roll-length input.
+                  </p>
+                )}
+
                 <div className="grid gap-4 sm:grid-cols-3">
                   <div>
                     <label className="mb-2 block text-sm font-medium text-gray-700">
-                      Area to Add (m²)
+                      {item.rollWidthMm != null ? "Roll Length to Add (m)" : "Area to Add (m²)"}
                     </label>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={quantity}
-                      onChange={(e) => setQuantity(e.target.value)}
-                      placeholder="e.g. 50"
-                      className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
-                    />
+                    {item.rollWidthMm != null ? (
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.1"
+                        value={rollLengthM}
+                        onChange={(e) => setRollLengthM(e.target.value)}
+                        placeholder="e.g. 50"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                      />
+                    ) : (
+                      <input
+                        type="number"
+                        min="0"
+                        step="0.01"
+                        value={quantity}
+                        onChange={(e) => setQuantity(e.target.value)}
+                        placeholder="e.g. 50"
+                        className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm text-gray-900 outline-none focus:border-blue-500"
+                      />
+                    )}
                   </div>
                   <div>
                     <label className="mb-2 block text-sm font-medium text-gray-700">
                       Adding
                     </label>
                     <div className="rounded-lg border border-gray-200 bg-gray-50 px-3 py-2 text-sm font-medium text-gray-900">
-                      + {(addedAreaMm2 / 1_000_000).toFixed(2)} m²
+                      {item.rollWidthMm != null
+                        ? `+ ${Number(rollLengthM) || 0} m (${(addedAreaMm2 / 1_000_000).toFixed(2)} m²)`
+                        : `+ ${(addedAreaMm2 / 1_000_000).toFixed(2)} m²`}
                     </div>
                   </div>
                   <div>

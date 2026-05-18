@@ -1,7 +1,7 @@
 import prisma from "../lib/prisma"
 import { parseRecentOrderSheet } from "../parseRecentOrderSheet"
 import { mapOrderRowToComponents, type PreviewComponent } from "../orderMapping"
-import { computeFabricAreaMm2 } from "../fabricPacking"
+import { computeFabricAreaMm2, ROLL_WIDTH_MM } from "../fabricPacking"
 import {
   normalizeCategoryName,
   normalizeItemName,
@@ -107,26 +107,34 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
     }
   }
 
-  const materialComponents = Array.from(materialGroupMap.entries()).map(
-    ([materialName, { blinds, sourceRows }]) => ({
-      category: "Material" as const,
-      itemName: materialName,
-      quantity: blinds.length,
-      areaMm2: computeFabricAreaMm2(blinds),
-      sourceRows,
-    })
-  )
-
   const dbItems = await prisma.item.findMany({
     include: {
       category: true,
     },
   })
 
+  const materialComponents = Array.from(materialGroupMap.entries()).map(
+    ([materialName, { blinds, sourceRows }]) => {
+      const matchedItem = dbItems.find(
+        (item) =>
+          item.name.toUpperCase() === materialName.toUpperCase() &&
+          normalizeCategoryName(item.category.name) === "FABRIC"
+      )
+      const rollWidthMm = matchedItem?.rollWidthMm ?? ROLL_WIDTH_MM
+      return {
+        category: "Fabric" as const,
+        itemName: materialName,
+        quantity: blinds.length,
+        areaMm2: computeFabricAreaMm2(blinds, rollWidthMm),
+        sourceRows,
+      }
+    }
+  )
+
   // Categories that are always LENGTH type — used to infer stockType
   // for items not yet in the database (missing items).
   const LENGTH_CATEGORIES = new Set(["Finish", "Tube"])
-  const AREA_CATEGORIES = new Set(["Material"])
+  const AREA_CATEGORIES = new Set(["Fabric"])
 
   const preview = [
     ...aggregatedComponents.map((component) => {

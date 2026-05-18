@@ -40,6 +40,7 @@ model Item {
   // AREA type (fabric/material)
   totalAreaMm2     Int?
   minimumAreaMm2   Int?
+  rollWidthMm      Int?  // Fabric roll width (mm) — used in FFDH strip packing
 
   categoryId       Int
   category         Category      @relation(fields: [categoryId], references: [id], onDelete: Restrict)

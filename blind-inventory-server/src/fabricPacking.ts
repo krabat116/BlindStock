@@ -2,7 +2,7 @@
  * Strip packing algorithm for fabric cutting optimisation.
  *
  * Models the factory cutting process:
- *   - Roll width:        ROLL_WIDTH_MM (3,000 mm = 3 m)
+ *   - Roll width:        rollWidthMm (default ROLL_WIDTH_MM = 3,000 mm = 3 m)
  *   - Table max length:  TABLE_MAX_LENGTH_MM (15,000 mm = 15 m)
  *
  * Algorithm: First Fit Decreasing Height (FFDH)
@@ -10,7 +10,7 @@
  *   2. For each blind, place it in the first strip that has enough
  *      remaining width.  If none exists, open a new strip.
  *   3. Total roll length = sum of all strip heights.
- *   4. Fabric area consumed = total roll length × ROLL_WIDTH_MM.
+ *   4. Fabric area consumed = total roll length × rollWidthMm.
  */
 
 export const ROLL_WIDTH_MM = 3_000
@@ -24,8 +24,10 @@ type Blind = {
 /**
  * Compute total fabric area (mm²) consumed when cutting the given blinds,
  * assuming optimal strip-packing within the roll width.
+ *
+ * @param rollWidthMm - The actual width of the fabric roll (mm). Defaults to ROLL_WIDTH_MM.
  */
-export function computeFabricAreaMm2(blinds: Blind[]): number {
+export function computeFabricAreaMm2(blinds: Blind[], rollWidthMm: number = ROLL_WIDTH_MM): number {
   if (blinds.length === 0) return 0
 
   // Sort by DROP descending so tallest blinds open new strips first
@@ -38,7 +40,7 @@ export function computeFabricAreaMm2(blinds: Blind[]): number {
   for (const blind of sorted) {
     if (blind.widthMm <= 0 || blind.dropMm <= 0) continue
 
-    const effectiveWidth = Math.min(blind.widthMm, ROLL_WIDTH_MM)
+    const effectiveWidth = Math.min(blind.widthMm, rollWidthMm)
 
     // Find the first existing strip that fits this blind's width
     let placed = false
@@ -54,20 +56,22 @@ export function computeFabricAreaMm2(blinds: Blind[]): number {
     if (!placed) {
       strips.push({
         height: blind.dropMm,
-        remainingWidth: ROLL_WIDTH_MM - effectiveWidth,
+        remainingWidth: rollWidthMm - effectiveWidth,
       })
     }
   }
 
   const totalRollLengthMm = strips.reduce((sum, s) => sum + s.height, 0)
-  return totalRollLengthMm * ROLL_WIDTH_MM
+  return totalRollLengthMm * rollWidthMm
 }
 
 /**
  * Return the number of cutting sessions required,
  * given the computed strips and the table maximum length.
+ *
+ * @param rollWidthMm - The actual width of the fabric roll (mm). Defaults to ROLL_WIDTH_MM.
  */
-export function computeSessionCount(blinds: Blind[]): number {
+export function computeSessionCount(blinds: Blind[], rollWidthMm: number = ROLL_WIDTH_MM): number {
   if (blinds.length === 0) return 0
 
   const sorted = [...blinds].sort((a, b) => b.dropMm - a.dropMm)
@@ -75,7 +79,7 @@ export function computeSessionCount(blinds: Blind[]): number {
 
   for (const blind of sorted) {
     if (blind.widthMm <= 0 || blind.dropMm <= 0) continue
-    const effectiveWidth = Math.min(blind.widthMm, ROLL_WIDTH_MM)
+    const effectiveWidth = Math.min(blind.widthMm, rollWidthMm)
 
     let placed = false
     for (const strip of strips) {
@@ -87,7 +91,7 @@ export function computeSessionCount(blinds: Blind[]): number {
     }
 
     if (!placed) {
-      strips.push({ height: blind.dropMm, remainingWidth: ROLL_WIDTH_MM - effectiveWidth })
+      strips.push({ height: blind.dropMm, remainingWidth: rollWidthMm - effectiveWidth })
     }
   }
 

@@ -27,6 +27,7 @@ export type CreateItemPayload =
       stockType: "AREA"
       totalAreaMm2: number
       minimumAreaMm2: number
+      rollWidthMm: number
       quantity?: null
       minimumStock?: null
       unit?: null

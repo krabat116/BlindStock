@@ -29,6 +29,8 @@ export function normalizeCategoryName(value: string) {
     BRACKETS: "BRACKETS",
     CAP: "CAP",
     CAPS: "CAP",
+    FABRIC: "FABRIC",
+    FABRICS: "FABRIC",
   }
 
   return categoryMap[normalized] ?? normalized
