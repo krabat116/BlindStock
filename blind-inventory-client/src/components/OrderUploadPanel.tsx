@@ -1,3 +1,4 @@
+import { useState, useRef } from "react"
 import type { OrderPreviewItem } from "../types/orderPreview"
 
 type OrderUploadPanelProps = {
@@ -96,19 +97,37 @@ export default function OrderUploadPanel({
     return item.currentStock !== null && item.currentStock < item.quantity
   })
 
+  const [isDragging, setIsDragging] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const canPreview = Boolean(file && year && month) && !loading
   const canConfirm =
     preview.length > 0 && !hasMissingItems && !hasInsufficientStock && !loading
 
-  return (
-    <div className="space-y-5">
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    setIsDragging(true)
+  }
 
-      {/* ── Form row ── */}
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault()
+    setIsDragging(false)
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setIsDragging(false)
+    const dropped = e.dataTransfer.files[0]
+    if (dropped) onFileChange(dropped)
+  }
+
+  return (
+    <div className="space-y-4">
+
+      {/* ── Year / Month / Button row ── */}
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1">
-          <label htmlFor="order-year" className="text-xs text-gray-500">
-            Year
-          </label>
+          <label htmlFor="order-year" className="text-xs text-gray-500">Year</label>
           <select
             id="order-year"
             value={year}
@@ -117,17 +136,13 @@ export default function OrderUploadPanel({
           >
             <option value="">Select year</option>
             {yearOptions.map((option) => (
-              <option key={option} value={option}>
-                {option}
-              </option>
+              <option key={option} value={option}>{option}</option>
             ))}
           </select>
         </div>
 
         <div className="flex flex-col gap-1">
-          <label htmlFor="order-month" className="text-xs text-gray-500">
-            Month
-          </label>
+          <label htmlFor="order-month" className="text-xs text-gray-500">Month</label>
           <select
             id="order-month"
             value={month}
@@ -136,24 +151,9 @@ export default function OrderUploadPanel({
           >
             <option value="">Select month</option>
             {monthOptions.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
+              <option key={option.value} value={option.value}>{option.label}</option>
             ))}
           </select>
-        </div>
-
-        <div className="flex flex-col gap-1 flex-1 min-w-48">
-          <label htmlFor="order-file" className="text-xs text-gray-500">
-            Excel file
-          </label>
-          <input
-            id="order-file"
-            type="file"
-            accept=".xlsx,.xls"
-            onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
-            className="text-sm text-gray-700"
-          />
         </div>
 
         <button
@@ -165,12 +165,41 @@ export default function OrderUploadPanel({
         </button>
       </div>
 
-      {/* ── Status info ── */}
-      {file && (
-        <p className="text-xs text-gray-500">
-          File: <span className="font-medium text-gray-700">{file.name}</span>
-        </p>
-      )}
+      {/* ── Drop zone ── */}
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={() => fileInputRef.current?.click()}
+        className={`cursor-pointer rounded-xl border-2 border-dashed px-6 py-8 text-center transition-colors ${
+          isDragging
+            ? "border-blue-400 bg-blue-50"
+            : file
+              ? "border-gray-300 bg-gray-50"
+              : "border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+        }`}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          onChange={(e) => onFileChange(e.target.files?.[0] ?? null)}
+          className="hidden"
+        />
+        {file ? (
+          <div className="space-y-1">
+            <p className="text-sm font-medium text-gray-900">{file.name}</p>
+            <p className="text-xs text-gray-400">Click or drag to replace</p>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            <p className="text-sm text-gray-500">
+              {isDragging ? "Drop file here" : "Drop Excel file here, or click to browse"}
+            </p>
+            <p className="text-xs text-gray-400">.xlsx · .xls</p>
+          </div>
+        )}
+      </div>
 
       {error && (
         <p className="text-sm text-red-600">{error}</p>

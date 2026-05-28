@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { apiFetch } from "../../lib/api"
 import { useAuth } from "../../contexts/AuthContext"
 
@@ -222,6 +222,113 @@ function ChangePasswordModal({
 }
 
 // ─────────────────────────────────────────────
+// Reset Confirm Modal
+// ─────────────────────────────────────────────
+function ResetConfirmModal({
+  isOpen,
+  onClose,
+  onSuccess,
+}: {
+  isOpen: boolean
+  onClose: () => void
+  onSuccess: () => void
+}) {
+  const [confirmText, setConfirmText] = useState("")
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState("")
+  const inputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (isOpen) {
+      setConfirmText("")
+      setError("")
+      setTimeout(() => inputRef.current?.focus(), 50)
+    }
+  }, [isOpen])
+
+  if (!isOpen) return null
+
+  const canConfirm = confirmText === "RESET" && !loading
+
+  async function handleReset() {
+    if (!canConfirm) return
+    try {
+      setLoading(true)
+      setError("")
+      const res = await apiFetch("/admin/reset", { method: "POST" })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.message || "Reset failed")
+      }
+      onSuccess()
+      onClose()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Reset failed")
+    } finally {
+      setLoading(false)
+    }
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 px-4">
+      <div className="w-full max-w-md rounded-2xl bg-white shadow-xl">
+        <div className="border-b border-gray-200 px-6 py-4">
+          <h3 className="text-lg font-semibold text-gray-900">Reset inventory data</h3>
+        </div>
+
+        <div className="space-y-4 px-6 py-5">
+          <div className="rounded-lg border border-red-100 bg-red-50 px-4 py-3 text-sm text-red-700 space-y-1">
+            <p className="font-medium">The following will be permanently deleted:</p>
+            <ul className="list-disc list-inside space-y-0.5 text-red-600">
+              <li>All transaction history</li>
+              <li>All uploaded order records (year / sheet no.)</li>
+              <li>All item stock reset to 0</li>
+            </ul>
+            <p className="mt-2 text-red-500">Items, categories, and customers are kept.</p>
+          </div>
+
+          <div>
+            <label className="mb-1.5 block text-sm font-medium text-gray-700">
+              Type <span className="font-mono font-bold">RESET</span> to confirm
+            </label>
+            <input
+              ref={inputRef}
+              type="text"
+              value={confirmText}
+              onChange={(e) => setConfirmText(e.target.value)}
+              disabled={loading}
+              placeholder="RESET"
+              className="w-full rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-red-400 disabled:opacity-50"
+            />
+          </div>
+
+          {error && <p className="text-sm text-red-600">{error}</p>}
+        </div>
+
+        <div className="flex justify-end gap-3 border-t border-gray-200 px-6 py-4">
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={loading}
+            className="rounded-lg border border-gray-300 px-4 py-2 text-sm text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+          >
+            Cancel
+          </button>
+          <button
+            type="button"
+            onClick={handleReset}
+            disabled={!canConfirm}
+            className="rounded-lg bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-40 transition-colors"
+          >
+            {loading ? "Resetting..." : "Reset"}
+          </button>
+        </div>
+      </div>
+    </div>
+  )
+}
+
+// ─────────────────────────────────────────────
 // Main page
 // ─────────────────────────────────────────────
 export default function SettingsPage() {
@@ -233,6 +340,9 @@ export default function SettingsPage() {
 
   const [addModalOpen, setAddModalOpen] = useState(false)
   const [changePwUser, setChangePwUser] = useState<User | null>(null)
+  const [resetModalOpen, setResetModalOpen] = useState(false)
+  const [resetSuccess, setResetSuccess] = useState(false)
+  const [dangerZoneOpen, setDangerZoneOpen] = useState(false)
 
   async function fetchUsers() {
     try {
@@ -354,6 +464,51 @@ export default function SettingsPage() {
             </table>
           )}
         </div>
+
+        {/* Danger Zone section */}
+        <div className="overflow-hidden rounded-xl border border-red-100 bg-white">
+          <button
+            type="button"
+            onClick={() => setDangerZoneOpen((prev) => !prev)}
+            className="flex w-full items-center justify-between px-5 py-3 text-left transition-colors hover:bg-red-50"
+          >
+            <h2 className="text-sm font-medium text-red-600">Danger Zone</h2>
+            <svg
+              className={`h-4 w-4 text-red-400 transition-transform duration-200 ${dangerZoneOpen ? "rotate-180" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {dangerZoneOpen && (
+            <>
+              <div className="flex items-center justify-between border-t border-red-100 px-5 py-4">
+                <div>
+                  <p className="text-sm font-medium text-gray-800">Reset inventory data</p>
+                  <p className="mt-0.5 text-xs text-gray-500">
+                    Zero all stock, delete all transactions and order records. Items and categories are kept.
+                  </p>
+                </div>
+                <button
+                  onClick={() => { setResetSuccess(false); setResetModalOpen(true) }}
+                  className="shrink-0 rounded-md border border-red-200 px-3 py-1.5 text-xs font-medium text-red-600 hover:bg-red-50 transition-colors"
+                >
+                  Reset
+                </button>
+              </div>
+              {resetSuccess && (
+                <div className="border-t border-red-100 bg-red-50 px-5 py-3 text-xs text-red-700">
+                  Inventory data has been reset successfully.
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
       </div>
 
       <AddUserModal
@@ -366,6 +521,12 @@ export default function SettingsPage() {
         user={changePwUser}
         onClose={() => setChangePwUser(null)}
         onChanged={fetchUsers}
+      />
+
+      <ResetConfirmModal
+        isOpen={resetModalOpen}
+        onClose={() => setResetModalOpen(false)}
+        onSuccess={() => setResetSuccess(true)}
       />
     </main>
   )

@@ -30,7 +30,7 @@ router.get("/", async (_req, res) => {
  */
 router.get("/:id", async (req, res) => {
   try {
-    const customer = await getCustomerDetail(req.params.id)
+    const customer = await getCustomerDetail(req.params.id as string)
 
     if (!customer) {
       return res.status(404).json({ message: "Customer not found" })
@@ -64,7 +64,7 @@ router.post("/", async (req, res) => {
  */
 router.patch("/:id", async (req, res) => {
   try {
-    const customer = await updateCustomer(req.params.id, req.body)
+    const customer = await updateCustomer(req.params.id as string, req.body)
     res.json(customer)
   } catch (error) {
     const err = error as Error & { status?: number }
@@ -79,7 +79,7 @@ router.patch("/:id", async (req, res) => {
  */
 router.delete("/:id", requireAdmin, async (req, res) => {
   try {
-    await deleteCustomer(req.params.id)
+    await deleteCustomer(req.params.id as string)
     res.status(204).send()
   } catch (error) {
     const err = error as Error & { status?: number }

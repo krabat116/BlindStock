@@ -1,4 +1,6 @@
-const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001"
+// In production the client is served by the same Express server, so relative URLs work.
+// In development, .env.development sets VITE_API_URL=http://localhost:3001.
+const BASE_URL = import.meta.env.VITE_API_URL ?? ""
 
 export function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
   const token = localStorage.getItem("blind_token")

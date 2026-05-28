@@ -1,3 +1,5 @@
+import { useState, useRef } from "react"
+
 export type BatchResult = {
   fileName: string
   status: "success" | "skipped" | "error"
@@ -48,6 +50,9 @@ export default function BatchUploadPanel({
   onStartBatch,
   onClear,
 }: BatchUploadPanelProps) {
+  const [isDragging, setIsDragging] = useState(false)
+  const fileInputRef = useRef<HTMLInputElement>(null)
+
   const canStart = files.length > 0 && !!year && !!month && !running
 
   const succeeded = results.filter((r) => r.status === "success").length
@@ -57,9 +62,29 @@ export default function BatchUploadPanel({
 
   const pct = progress.total > 0 ? Math.round((progress.current / progress.total) * 100) : 0
 
+  function handleDragOver(e: React.DragEvent) {
+    e.preventDefault()
+    if (!running) setIsDragging(true)
+  }
+
+  function handleDragLeave(e: React.DragEvent) {
+    e.preventDefault()
+    setIsDragging(false)
+  }
+
+  function handleDrop(e: React.DragEvent) {
+    e.preventDefault()
+    setIsDragging(false)
+    if (running) return
+    const dropped = Array.from(e.dataTransfer.files).filter(
+      (f) => f.name.endsWith(".xlsx") || f.name.endsWith(".xls")
+    )
+    if (dropped.length > 0) onFilesChange(dropped)
+  }
+
   return (
-    <div className="space-y-5">
-      {/* ── Controls ── */}
+    <div className="space-y-4">
+      {/* ── Year / Month / Button row ── */}
       <div className="flex flex-wrap items-end gap-3">
         <div className="flex flex-col gap-1">
           <label className="text-xs text-gray-500">Year</label>
@@ -91,18 +116,6 @@ export default function BatchUploadPanel({
           </select>
         </div>
 
-        <div className="flex flex-col gap-1 flex-1 min-w-48">
-          <label className="text-xs text-gray-500">Excel files (multiple)</label>
-          <input
-            type="file"
-            accept=".xlsx,.xls"
-            multiple
-            disabled={running}
-            onChange={(e) => onFilesChange(Array.from(e.target.files ?? []))}
-            className="text-sm text-gray-700 disabled:opacity-50"
-          />
-        </div>
-
         <button
           onClick={onStartBatch}
           disabled={!canStart}
@@ -114,17 +127,54 @@ export default function BatchUploadPanel({
         </button>
       </div>
 
-      {/* ── File list ── */}
-      {files.length > 0 && !running && results.length === 0 && (
-        <div className="space-y-1">
-          <p className="text-xs text-gray-500">{files.length} file{files.length > 1 ? "s" : ""} selected</p>
-          <ul className="max-h-40 overflow-y-auto rounded-lg border border-gray-100 bg-gray-50 divide-y divide-gray-100">
-            {files.map((f, i) => (
-              <li key={i} className="px-3 py-1.5 text-xs text-gray-700">{f.name}</li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {/* ── Drop zone ── */}
+      <div
+        onDragOver={handleDragOver}
+        onDragLeave={handleDragLeave}
+        onDrop={handleDrop}
+        onClick={() => !running && fileInputRef.current?.click()}
+        className={`rounded-xl border-2 border-dashed px-6 py-8 text-center transition-colors ${
+          running
+            ? "cursor-not-allowed border-gray-100 bg-gray-50 opacity-50"
+            : isDragging
+              ? "cursor-copy border-blue-400 bg-blue-50"
+              : files.length > 0
+                ? "cursor-pointer border-gray-300 bg-gray-50"
+                : "cursor-pointer border-gray-200 bg-white hover:border-gray-300 hover:bg-gray-50"
+        }`}
+      >
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept=".xlsx,.xls"
+          multiple
+          disabled={running}
+          onChange={(e) => onFilesChange(Array.from(e.target.files ?? []))}
+          className="hidden"
+        />
+        {files.length > 0 ? (
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-gray-900">
+              {files.length} file{files.length > 1 ? "s" : ""} selected
+            </p>
+            <ul className="mx-auto max-h-32 max-w-sm overflow-y-auto text-left divide-y divide-gray-100 rounded-lg border border-gray-100 bg-white">
+              {files.map((f, i) => (
+                <li key={i} className="px-3 py-1.5 text-xs text-gray-700">{f.name}</li>
+              ))}
+            </ul>
+            {!running && (
+              <p className="text-xs text-gray-400">Click or drag to replace</p>
+            )}
+          </div>
+        ) : (
+          <div className="space-y-1">
+            <p className="text-sm text-gray-500">
+              {isDragging ? "Drop files here" : "Drop Excel files here, or click to browse"}
+            </p>
+            <p className="text-xs text-gray-400">Multiple files supported · .xlsx · .xls</p>
+          </div>
+        )}
+      </div>
 
       {/* ── Progress bar ── */}
       {(running || (results.length > 0 && progress.total > 0)) && (

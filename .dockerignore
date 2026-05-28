@@ -1,0 +1,11 @@
+**/node_modules
+**/dist
+**/.env
+**/.env.local
+**/dev.db
+**/dev.db-journal
+**/*.log
+**/.DS_Store
+blind-inventory-client/.env.development
+docs
+README.md

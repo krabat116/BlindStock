@@ -1,6 +1,7 @@
 import { useState } from "react"
 import { useNavigate } from "react-router-dom"
 import { useAuth } from "../../contexts/AuthContext"
+import { apiFetch } from "../../lib/api"
 
 export default function LoginPage() {
   const { login } = useAuth()
@@ -22,10 +23,8 @@ export default function LoginPage() {
       setLoading(true)
       setError("")
 
-      const BASE_URL = import.meta.env.VITE_API_URL || "http://localhost:3001"
-      const res = await fetch(`${BASE_URL}/auth/login`, {
+      const res = await apiFetch("/auth/login", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ username: username.trim(), password }),
       })
 

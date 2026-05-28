@@ -17,6 +17,7 @@ export type CreateItemPayload =
       defaultLengthMm: number
       totalLengthMm: number
       minimumLengthMm: number
+      cutoffLengthMm?: number | null
       quantity?: null
       minimumStock?: null
       unit?: null
