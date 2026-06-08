@@ -25,7 +25,7 @@ export type ParsedOrderRow = {
 
 export type PreviewComponent = {
   sourceRow: number
-  category: "Finish" | "Winder" | "Pin" | "Chain" | "Tube" | "Bracket" | "Cap" | "Spring Assist" | "Material" | "Motor"
+  category: string
   itemName: string
   quantity: number
   lengthMm?: number // LENGTH 타입 부품의 차감할 총 길이(mm)

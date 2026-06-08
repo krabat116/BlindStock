@@ -328,11 +328,23 @@ function ResetConfirmModal({
   )
 }
 
+type ContinuationRule = {
+  id: number
+  keyword: string
+  categoryName: string
+}
+
+type Category = {
+  id: number
+  name: string
+}
+
 // ─────────────────────────────────────────────
 // Main page
 // ─────────────────────────────────────────────
 export default function SettingsPage() {
   const { user: me } = useAuth()
+  const isAdmin = me?.role === "ADMIN"
 
   const [users, setUsers] = useState<User[]>([])
   const [loading, setLoading] = useState(true)
@@ -343,6 +355,15 @@ export default function SettingsPage() {
   const [resetModalOpen, setResetModalOpen] = useState(false)
   const [resetSuccess, setResetSuccess] = useState(false)
   const [dangerZoneOpen, setDangerZoneOpen] = useState(false)
+
+  // Order Parsing Rules
+  const [rules, setRules] = useState<ContinuationRule[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [rulesOpen, setRulesOpen] = useState(false)
+  const [newKeyword, setNewKeyword] = useState("")
+  const [newCategory, setNewCategory] = useState("")
+  const [rulesError, setRulesError] = useState("")
+  const [rulesLoading, setRulesLoading] = useState(false)
 
   async function fetchUsers() {
     try {
@@ -359,7 +380,72 @@ export default function SettingsPage() {
     }
   }
 
-  useEffect(() => { fetchUsers() }, [])
+  async function fetchRules() {
+    try {
+      const res = await apiFetch("/continuation-rules")
+      if (!res.ok) return
+      const data: ContinuationRule[] = await res.json()
+      setRules(data)
+    } catch {
+      // silent — non-critical
+    }
+  }
+
+  async function fetchCategories() {
+    try {
+      const res = await apiFetch("/categories")
+      if (!res.ok) return
+      const data: Category[] = await res.json()
+      setCategories(data)
+    } catch {
+      // silent
+    }
+  }
+
+  useEffect(() => {
+    fetchUsers()
+    fetchRules()
+    fetchCategories()
+  }, [])
+
+  async function handleAddRule(e: React.FormEvent) {
+    e.preventDefault()
+    if (!newKeyword.trim()) { setRulesError("Keyword is required."); return }
+    if (!newCategory) { setRulesError("Please select a category."); return }
+    try {
+      setRulesLoading(true)
+      setRulesError("")
+      const res = await apiFetch("/continuation-rules", {
+        method: "POST",
+        body: JSON.stringify({ keyword: newKeyword.trim(), categoryName: newCategory }),
+      })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        throw new Error(body?.message || "Failed to add rule")
+      }
+      setNewKeyword("")
+      setNewCategory("")
+      await fetchRules()
+    } catch (err) {
+      setRulesError(err instanceof Error ? err.message : "Failed to add rule")
+    } finally {
+      setRulesLoading(false)
+    }
+  }
+
+  async function handleDeleteRule(id: number) {
+    try {
+      const res = await apiFetch(`/continuation-rules/${id}`, { method: "DELETE" })
+      if (!res.ok) {
+        const body = await res.json().catch(() => null)
+        alert(body?.message || "Failed to delete rule")
+        return
+      }
+      await fetchRules()
+    } catch {
+      alert("Failed to delete rule")
+    }
+  }
 
   async function handleDelete(user: User) {
     const confirmed = window.confirm(
@@ -462,6 +548,113 @@ export default function SettingsPage() {
                 ))}
               </tbody>
             </table>
+          )}
+        </div>
+
+        {/* Order Parsing Rules section */}
+        <div className="overflow-hidden rounded-xl border border-gray-200 bg-white">
+          <button
+            type="button"
+            onClick={() => setRulesOpen((prev) => !prev)}
+            className="flex w-full items-center justify-between px-5 py-3 text-left transition-colors hover:bg-gray-50"
+          >
+            <div>
+              <h2 className="text-sm font-medium text-gray-800">Order Parsing Rules</h2>
+              <p className="mt-0.5 text-xs text-gray-500">Map keywords to inventory categories for continuation rows in Excel orders.</p>
+            </div>
+            <svg
+              className={`ml-4 h-4 w-4 shrink-0 text-gray-400 transition-transform duration-200 ${rulesOpen ? "rotate-180" : ""}`}
+              fill="none"
+              viewBox="0 0 24 24"
+              stroke="currentColor"
+              strokeWidth={2}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" d="M19 9l-7 7-7-7" />
+            </svg>
+          </button>
+
+          {rulesOpen && (
+            <div className="border-t border-gray-100">
+              {/* Rules table */}
+              {rules.length > 0 ? (
+                <table className="min-w-full text-sm">
+                  <thead>
+                    <tr className="bg-gray-50">
+                      <th className="px-5 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-gray-400">Keyword</th>
+                      <th className="px-5 py-2.5 text-left text-xs font-medium uppercase tracking-wide text-gray-400">Category</th>
+                      {isAdmin && <th className="px-5 py-2.5"></th>}
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {rules.map((rule) => (
+                      <tr key={rule.id} className="hover:bg-gray-50">
+                        <td className="px-5 py-2.5 font-mono text-sm text-gray-800">{rule.keyword}</td>
+                        <td className="px-5 py-2.5 text-gray-600">{rule.categoryName}</td>
+                        {isAdmin && (
+                          <td className="px-5 py-2.5 text-right">
+                            <button
+                              onClick={() => handleDeleteRule(rule.id)}
+                              className="rounded-md border border-red-100 px-3 py-1 text-xs text-red-500 hover:bg-red-50 transition-colors"
+                            >
+                              Delete
+                            </button>
+                          </td>
+                        )}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              ) : (
+                <p className="px-5 py-4 text-sm text-gray-400">No rules defined. Unmatched rows default to "Bracket".</p>
+              )}
+
+              {/* Default fallback note */}
+              <div className="border-t border-gray-100 bg-gray-50 px-5 py-2.5">
+                <p className="text-xs text-gray-500">
+                  Rows with no matching keyword are assigned to <span className="font-medium text-gray-700">Bracket</span> by default.
+                </p>
+              </div>
+
+              {/* Add rule form (admin only) */}
+              {isAdmin && (
+                <form onSubmit={handleAddRule} className="border-t border-gray-100 px-5 py-4">
+                  <p className="mb-3 text-xs font-medium text-gray-700">Add rule</p>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div>
+                      <label className="mb-1 block text-xs text-gray-500">Keyword</label>
+                      <input
+                        type="text"
+                        value={newKeyword}
+                        onChange={(e) => setNewKeyword(e.target.value)}
+                        placeholder="e.g. MOTOR"
+                        className="w-36 rounded-lg border border-gray-300 px-3 py-2 text-sm uppercase outline-none focus:border-blue-500"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-xs text-gray-500">Category</label>
+                      <select
+                        value={newCategory}
+                        onChange={(e) => setNewCategory(e.target.value)}
+                        className="rounded-lg border border-gray-300 px-3 py-2 text-sm outline-none focus:border-blue-500"
+                      >
+                        <option value="">Select category</option>
+                        {categories.map((cat) => (
+                          <option key={cat.id} value={cat.name}>{cat.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <button
+                      type="submit"
+                      disabled={rulesLoading}
+                      className="rounded-lg bg-gray-900 px-4 py-2 text-sm font-medium text-white hover:bg-gray-700 disabled:opacity-60"
+                    >
+                      {rulesLoading ? "Adding..." : "Add Rule"}
+                    </button>
+                  </div>
+                  {rulesError && <p className="mt-2 text-xs text-red-600">{rulesError}</p>}
+                </form>
+              )}
+            </div>
           )}
         </div>
 

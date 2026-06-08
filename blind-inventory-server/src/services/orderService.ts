@@ -36,27 +36,20 @@ type ConfirmOrderDeductionInput = {
  * - match them with inventory items
  */
 export async function previewOrderUpload(fileBuffer: Buffer) {
-  const parsed = parseRecentOrderSheet(fileBuffer)
+  const continuationRules = await prisma.continuationRowRule.findMany()
+  const parsed = parseRecentOrderSheet(fileBuffer, continuationRules)
   const flatComponents = parsed.rows.flatMap(mapOrderRowToComponents)
 
-  // Convert bracket components (from MATERIAL rows with no BLIND NO) into
-  // the same PreviewComponent shape so they flow through the same aggregation
-  const bracketPreviewComponents: PreviewComponent[] = parsed.bracketComponents.map((bc) => ({
-    sourceRow: bc.sourceRow,
-    category: "Bracket" as const,
-    itemName: bc.itemName,
-    quantity: bc.quantity,
+  // Convert continuation components (brackets, motors, or any user-defined category)
+  // into the same PreviewComponent shape so they flow through the same aggregation
+  const continuationPreviewComponents: PreviewComponent[] = parsed.continuationComponents.map((cc) => ({
+    sourceRow: cc.sourceRow,
+    category: cc.category,
+    itemName: cc.itemName,
+    quantity: cc.quantity,
   }))
 
-  // Convert motor accessory components the same way
-  const motorPreviewComponents: PreviewComponent[] = parsed.motorComponents.map((mc) => ({
-    sourceRow: mc.sourceRow,
-    category: "Motor" as const,
-    itemName: mc.itemName,
-    quantity: mc.quantity,
-  }))
-
-  const allComponents = [...flatComponents, ...bracketPreviewComponents, ...motorPreviewComponents]
+  const allComponents = [...flatComponents, ...continuationPreviewComponents]
 
   const aggregatedMap = new Map<
     string,

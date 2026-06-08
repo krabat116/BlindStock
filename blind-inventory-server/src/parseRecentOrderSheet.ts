@@ -3,20 +3,13 @@ import type { ParsedOrderRow } from "./orderMapping"
 
 type RawRow = Record<string, unknown>
 
-export type ParsedBracketComponent = {
+export type ParsedContinuationComponent = {
   sourceRow: number
   account: string
   customerName: string
   itemName: string
   quantity: number
-}
-
-export type ParsedMotorComponent = {
-  sourceRow: number
-  account: string
-  customerName: string
-  itemName: string
-  quantity: number
+  category: string
 }
 
 export type ParsedOrderSheetResult = {
@@ -24,8 +17,7 @@ export type ParsedOrderSheetResult = {
   accountName: string
   totalItems: number
   rows: ParsedOrderRow[]
-  bracketComponents: ParsedBracketComponent[]
-  motorComponents: ParsedMotorComponent[]
+  continuationComponents: ParsedContinuationComponent[]
 }
 
 const columnAliases = {
@@ -115,23 +107,42 @@ function buildHeadersFromTwoRows(row1: unknown[], row2: unknown[]) {
 }
 
 /**
- * Keywords that identify a continuation row as motor accessories
- * rather than bracket accessories.
+ * Resolve the category for a continuation row.
+ * Iterates over user-defined rules; returns the first matching categoryName.
+ * Falls back to "Bracket" if no rule matches.
  */
-const MOTOR_KEYWORDS = /MOTOR|REMOTE|CHARGER|CABLE|BATTERY|RECEIVER/i
+function matchCategory(
+  materialRaw: string,
+  rules: Array<{ keyword: string; categoryName: string }>
+): string {
+  const upper = materialRaw.toUpperCase()
+  for (const rule of rules) {
+    if (upper.includes(rule.keyword.toUpperCase())) return rule.categoryName
+  }
+  return "Bracket"
+}
 
 /**
- * Parse a motor accessory row's material cell into individual components.
- * Example input: "1X LI-ION 1.1 MOTOR"  →  [{ itemName: "LI-ION 1.1 MOTOR", quantity: 1 }]
- * Example input: "1X AC/DC CHARGER"      →  [{ itemName: "AC/DC CHARGER",    quantity: 1 }]
+ * Parse a continuation row's material cell into individual components.
+ * Input pattern: "NX ITEM NAME", "NX ITEM NAME, NX ITEM NAME, ..."
+ *
+ * When category is "Bracket":
+ *   - Strips trailing BRACK* word
+ *   - Appends "BRACKET" suffix unless the name already contains BRACK* or is a COMBO
+ *   - Handles COMBO items with fallback colour
+ * For all other categories:
+ *   - Uses item name as-is (uppercased)
  */
-function parseMotorRow(
+function parseContinuationRow(
   rowNumber: number,
   account: string,
   customerName: string,
-  materialRaw: string
-): ParsedMotorComponent[] {
-  const results: ParsedMotorComponent[] = []
+  materialRaw: string,
+  category: string,
+  fallbackColour: string = ""
+): ParsedContinuationComponent[] {
+  const results: ParsedContinuationComponent[] = []
+  const isBracket = category.toUpperCase() === "BRACKET"
 
   for (const part of materialRaw.split(",")) {
     const trimmed = part.trim()
@@ -141,81 +152,39 @@ function parseMotorRow(
     const quantity = parseInt(match[1], 10)
     if (!quantity || quantity <= 0) continue
 
-    const itemName = match[2].trim().toUpperCase()
-    if (!itemName) continue
-
-    results.push({ sourceRow: rowNumber, account, customerName, itemName, quantity })
-  }
-
-  return results
-}
-
-/**
- * Parse a bracket row's material cell into individual bracket components.
- * Example input: "2X S WHITE, 2X S BLACK BRACKETS"
- * → [{ itemName: "S WHITE", quantity: 2 }, { itemName: "S BLACK", quantity: 2 }]
- */
-function parseBracketRow(
-  rowNumber: number,
-  account: string,
-  customerName: string,
-  materialRaw: string,
-  fallbackColour: string = ""
-): ParsedBracketComponent[] {
-  const results: ParsedBracketComponent[] = []
-
-  const parts = materialRaw.split(",")
-
-  for (const part of parts) {
-    const trimmed = part.trim()
-    const match = trimmed.match(/^(\d+)\s*[Xx]\s+(.+)$/i)
-    if (!match) continue
-
-    const quantity = parseInt(match[1], 10)
-    if (!quantity || quantity <= 0) continue
-
-    // Strip any word starting with "BRACK" at the end.
-    // Handles BRACKET, BRACKETS, and typos like BRACKTES.
-    const rawName = match[2].trim().replace(/\s+BRACK\w*\s*$/i, "").trim()
+    const rawName = match[2].trim()
     if (!rawName) continue
 
-    const upperName = rawName.toUpperCase()
-
-    // Combo brackets already carry a descriptive product name (e.g. "LHS SLIMLINE COMBOS BLACK")
-    // so appending "BRACKET" would be redundant. Standard colour-only brackets
-    // (e.g. "S WHITE") need the suffix to stay distinct from other colour-named items.
-    // Names that already contain "BRACKET/BRACKETS" anywhere (e.g. "EXTENDED BRACKETS WHITE")
-    // also don't need the suffix appended again.
-    const isCombo = /COMBO/i.test(rawName)
-    const alreadyHasBracket = /BRACK/i.test(rawName)
-
     let itemName: string
-    if (isCombo) {
-      // If the combo name ends with "COMBO" or "COMBOS" (no colour appended by the admin),
-      // derive the colour from the last seen componentry colour on a blind row.
-      // "S WHITE" → strip leading "S " → "WHITE"; "S BLACK" → "BLACK"; "WHITE" → "WHITE"
-      const lastWord = upperName.split(/\s+/).pop() ?? ""
-      const missingColour = /^COMBOS?$/.test(lastWord)
-      if (missingColour && fallbackColour) {
-        const colourOnly = fallbackColour.trim().replace(/^S\s+/i, "").toUpperCase()
-        itemName = `${upperName} ${colourOnly}`
-      } else {
+
+    if (isBracket) {
+      // Strip any trailing BRACK* word
+      const strippedName = rawName.replace(/\s+BRACK\w*\s*$/i, "").trim()
+      if (!strippedName) continue
+
+      const upperName = strippedName.toUpperCase()
+      const isCombo = /COMBO/i.test(upperName)
+      const alreadyHasBracket = /BRACK/i.test(upperName)
+
+      if (isCombo) {
+        const lastWord = upperName.split(/\s+/).pop() ?? ""
+        const missingColour = /^COMBOS?$/.test(lastWord)
+        if (missingColour && fallbackColour) {
+          const colourOnly = fallbackColour.trim().replace(/^S\s+/i, "").toUpperCase()
+          itemName = `${upperName} ${colourOnly}`
+        } else {
+          itemName = upperName
+        }
+      } else if (alreadyHasBracket) {
         itemName = upperName
+      } else {
+        itemName = `${upperName} BRACKET`
       }
-    } else if (alreadyHasBracket) {
-      // Name already contains BRACKET/BRACKETS — use as-is
-      itemName = upperName
     } else {
-      itemName = `${upperName} BRACKET`
+      itemName = rawName.trim().toUpperCase()
     }
 
-    results.push({
-      sourceRow: rowNumber,
-      account,
-      customerName,
-      itemName,
-      quantity,
-    })
+    results.push({ sourceRow: rowNumber, account, customerName, itemName, quantity, category })
   }
 
   return results
@@ -262,7 +231,10 @@ function extractOrderSheetNo(rows: unknown[][]): number | null {
 }
 
 
-export function parseRecentOrderSheet(buffer: Buffer): ParsedOrderSheetResult {
+export function parseRecentOrderSheet(
+  buffer: Buffer,
+  rules: Array<{ keyword: string; categoryName: string }> = []
+): ParsedOrderSheetResult {
   const workbook = XLSX.read(buffer, { type: "buffer" })
   const firstSheetName = workbook.SheetNames[0]
   const sheet = workbook.Sheets[firstSheetName]
@@ -299,8 +271,7 @@ export function parseRecentOrderSheet(buffer: Buffer): ParsedOrderSheetResult {
   console.log("🧾 First normalized row:", normalizedRows[0])
 
   const parsedRows: ParsedOrderRow[] = []
-  const bracketComponents: ParsedBracketComponent[] = []
-  const motorComponents: ParsedMotorComponent[] = []
+  const continuationComponents: ParsedContinuationComponent[] = []
 
   // Track the most recent componentry colour seen on a blind row.
   // Used as fallback when a bracket/combo row has no colour in its material text.
@@ -330,17 +301,13 @@ export function parseRecentOrderSheet(buffer: Buffer): ParsedOrderSheetResult {
     // Detect continuation rows: no blind number, but material cell has an "NxX ..." pattern
     if (!blindNo && /\d+\s*[Xx]\s+/i.test(materialRange)) {
       const rowNumber = index + 7
-      if (MOTOR_KEYWORDS.test(materialRange)) {
-        motorComponents.push(
-          ...parseMotorRow(rowNumber, account, customerName, materialRange)
-        )
-      } else {
-        bracketComponents.push(
-          ...parseBracketRow(rowNumber, account, customerName, materialRange, lastComponentryColour)
-        )
-      }
+      const category = matchCategory(materialRange, rules)
+      continuationComponents.push(
+        ...parseContinuationRow(rowNumber, account, customerName, materialRange, category, lastComponentryColour)
+      )
       return
     }
+
     const materialColour = toText(
       getValueByAliases(row, columnAliases.materialColour)
     )
@@ -404,21 +371,16 @@ export function parseRecentOrderSheet(buffer: Buffer): ParsedOrderSheetResult {
 
   console.log("🧾 Parsed order rows:", parsedRows)
 
-  // return parsedRows
   const orderSheetNo = extractOrderSheetNo(rows)
   console.log("🧾 Extracted orderSheetNo:", orderSheetNo)
-const accountName = parsedRows[0]?.account ?? ""
-const totalItems = parsedRows.reduce((sum, row) => sum + row.qty, 0)
+  const accountName = parsedRows[0]?.account ?? ""
+  const totalItems = parsedRows.reduce((sum, row) => sum + row.qty, 0)
 
-return {
-  orderSheetNo,
-  accountName,
-  totalItems,
-  rows: parsedRows,
-  bracketComponents,
-  motorComponents,
-}
-
-
-
+  return {
+    orderSheetNo,
+    accountName,
+    totalItems,
+    rows: parsedRows,
+    continuationComponents,
+  }
 }
