@@ -48,7 +48,15 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
     quantity: bc.quantity,
   }))
 
-  const allComponents = [...flatComponents, ...bracketPreviewComponents]
+  // Convert motor accessory components the same way
+  const motorPreviewComponents: PreviewComponent[] = parsed.motorComponents.map((mc) => ({
+    sourceRow: mc.sourceRow,
+    category: "Motor" as const,
+    itemName: mc.itemName,
+    quantity: mc.quantity,
+  }))
+
+  const allComponents = [...flatComponents, ...bracketPreviewComponents, ...motorPreviewComponents]
 
   const aggregatedMap = new Map<
     string,

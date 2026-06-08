@@ -11,12 +11,21 @@ export type ParsedBracketComponent = {
   quantity: number
 }
 
+export type ParsedMotorComponent = {
+  sourceRow: number
+  account: string
+  customerName: string
+  itemName: string
+  quantity: number
+}
+
 export type ParsedOrderSheetResult = {
   orderSheetNo: number | null
   accountName: string
   totalItems: number
   rows: ParsedOrderRow[]
   bracketComponents: ParsedBracketComponent[]
+  motorComponents: ParsedMotorComponent[]
 }
 
 const columnAliases = {
@@ -103,6 +112,42 @@ function buildHeadersFromTwoRows(row1: unknown[], row2: unknown[]) {
     // Blank header cells become COLUMN_n
     return `COLUMN_${index}`
   })
+}
+
+/**
+ * Keywords that identify a continuation row as motor accessories
+ * rather than bracket accessories.
+ */
+const MOTOR_KEYWORDS = /MOTOR|REMOTE|CHARGER|CABLE|BATTERY|RECEIVER/i
+
+/**
+ * Parse a motor accessory row's material cell into individual components.
+ * Example input: "1X LI-ION 1.1 MOTOR"  →  [{ itemName: "LI-ION 1.1 MOTOR", quantity: 1 }]
+ * Example input: "1X AC/DC CHARGER"      →  [{ itemName: "AC/DC CHARGER",    quantity: 1 }]
+ */
+function parseMotorRow(
+  rowNumber: number,
+  account: string,
+  customerName: string,
+  materialRaw: string
+): ParsedMotorComponent[] {
+  const results: ParsedMotorComponent[] = []
+
+  for (const part of materialRaw.split(",")) {
+    const trimmed = part.trim()
+    const match = trimmed.match(/^(\d+)\s*[Xx]\s+(.+)$/i)
+    if (!match) continue
+
+    const quantity = parseInt(match[1], 10)
+    if (!quantity || quantity <= 0) continue
+
+    const itemName = match[2].trim().toUpperCase()
+    if (!itemName) continue
+
+    results.push({ sourceRow: rowNumber, account, customerName, itemName, quantity })
+  }
+
+  return results
 }
 
 /**
@@ -255,6 +300,7 @@ export function parseRecentOrderSheet(buffer: Buffer): ParsedOrderSheetResult {
 
   const parsedRows: ParsedOrderRow[] = []
   const bracketComponents: ParsedBracketComponent[] = []
+  const motorComponents: ParsedMotorComponent[] = []
 
   // Track the most recent componentry colour seen on a blind row.
   // Used as fallback when a bracket/combo row has no colour in its material text.
@@ -281,12 +327,18 @@ export function parseRecentOrderSheet(buffer: Buffer): ParsedOrderSheetResult {
       getValueByAliases(row, columnAliases.material)
     )
 
-    // Detect bracket rows: no blind number, but material cell has an "NxX ..." pattern
+    // Detect continuation rows: no blind number, but material cell has an "NxX ..." pattern
     if (!blindNo && /\d+\s*[Xx]\s+/i.test(materialRange)) {
       const rowNumber = index + 7
-      bracketComponents.push(
-        ...parseBracketRow(rowNumber, account, customerName, materialRange, lastComponentryColour)
-      )
+      if (MOTOR_KEYWORDS.test(materialRange)) {
+        motorComponents.push(
+          ...parseMotorRow(rowNumber, account, customerName, materialRange)
+        )
+      } else {
+        bracketComponents.push(
+          ...parseBracketRow(rowNumber, account, customerName, materialRange, lastComponentryColour)
+        )
+      }
       return
     }
     const materialColour = toText(
@@ -364,6 +416,7 @@ return {
   totalItems,
   rows: parsedRows,
   bracketComponents,
+  motorComponents,
 }
 
 
