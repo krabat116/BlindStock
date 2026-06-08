@@ -70,14 +70,89 @@ export function buildFinishName(finish: string) {
 }
 
 /**
+ * Standard chain lengths stocked by the factory (mm).
+ * When a customer orders a non-standard length, the factory cuts down
+ * the nearest longer chain, so we snap up to the next available size.
+ */
+const STANDARD_CHAIN_SIZES_MM = [500, 750, 1000, 1250, 1500, 1750, 2000]
+const MAX_CHAIN_SIZE_MM = STANDARD_CHAIN_SIZES_MM[STANDARD_CHAIN_SIZES_MM.length - 1] // 2000
+/**
+ * Requests within this many mm above the max are filled with a single max chain.
+ * e.g. 2050 → just "METAL 2000" (factory cuts 50 mm off)
+ * e.g. 2051+ → two chains
+ */
+const SINGLE_CHAIN_TOLERANCE_MM = 50
+
+/**
+ * Returns the smallest standard chain size that is >= requestedMm.
+ * If the requested size exceeds all standard sizes, returns the largest.
+ */
+export function snapChainSize(requestedMm: number): number {
+  const fit = STANDARD_CHAIN_SIZES_MM.find((s) => s >= requestedMm)
+  return fit ?? MAX_CHAIN_SIZE_MM
+}
+
+/**
+ * Returns the chain item name(s) needed for the given request.
+ *
+ * - Standard / near-standard sizes → single item name
+ * - Sizes > MAX + TOLERANCE → two item names (max chain + smallest covering remainder)
+ *
+ * Examples:
+ *   "METAL", "900"         → ["METAL 1000"]          (snapped up)
+ *   "METAL", "2000"        → ["METAL 2000"]
+ *   "METAL", "2050"        → ["METAL 2000"]           (within tolerance)
+ *   "METAL", "2100"        → ["METAL 2000", "METAL 500"]
+ *   "METAL", "2600"        → ["METAL 2000", "METAL 750"]  (500 < 600, snap to 750? wait:
+ *                                                           remainder=600 → snapChainSize(600)=750)
+ *   "METAL", "MOTOR"       → []
+ *   "",      "500"         → []
+ */
+export function getChainItemNames(chainType: string, operationRaw: string): string[] {
+  if (!chainType) return []
+
+  const operation = operationRaw.trim().toUpperCase()
+  if (operation === "MOTOR") return []
+
+  let size: number | null = null
+
+  if (operation.startsWith("SWIVEL")) {
+    const match = operation.match(/SWIVEL\s+(\d+)/i)
+    size = match ? parseInt(match[1], 10) : null
+  } else if (operation.startsWith("SA")) {
+    const match = operation.match(/SA\s+(\d+)/i)
+    size = match ? parseInt(match[1], 10) : null
+  } else {
+    const n = parseInt(operation, 10)
+    size = Number.isNaN(n) ? null : n
+  }
+
+  if (!size || size <= 0) return [chainType] // fallback: type only
+
+  // Single chain range (including tolerance above max)
+  if (size <= MAX_CHAIN_SIZE_MM + SINGLE_CHAIN_TOLERANCE_MM) {
+    return [`${chainType} ${snapChainSize(size)}`]
+  }
+
+  // Two-chain combination: max chain + smallest that covers the remainder
+  const remainder = size - MAX_CHAIN_SIZE_MM
+  const secondSize = snapChainSize(remainder)
+  return [`${chainType} ${MAX_CHAIN_SIZE_MM}`, `${chainType} ${secondSize}`]
+}
+
+/**
  * Build the chain item name from the chain material type (col 16)
  * and the chain size extracted from col 14.
  *
  * col 16 (chainType, already normalised): "METAL", "WHITE", or ""
  * col 14 (operationRaw): numeric size, "SWIVEL NNN", or "MOTOR"
  *
+ * Non-standard sizes are snapped up to the nearest standard size
+ * (e.g. 900 → 1000) because the factory cuts from stock chains.
+ *
  * Examples:
  *   chainType="METAL", operationRaw="500"         → "METAL 500"
+ *   chainType="METAL", operationRaw="900"         → "METAL 1000"
  *   chainType="METAL", operationRaw="1250"        → "METAL 1250"
  *   chainType="METAL", operationRaw="SWIVEL 1000" → "METAL 1000"
  *   chainType="WHITE", operationRaw="SWIVEL 750"  → "WHITE 750"
@@ -112,7 +187,8 @@ export function buildChainName(chainType: string, operationRaw: string): string 
 
   if (!size || size <= 0) return chainType // fallback: chain type without size
 
-  return `${chainType} ${size}` // e.g. "METAL 500", "WHITE 750"
+  const snapped = snapChainSize(size)
+  return `${chainType} ${snapped}` // e.g. "METAL 500", "WHITE 1000" (snapped from 900)
 }
 
 /**
@@ -268,8 +344,8 @@ export function mapOrderRowToComponents(row: ParsedOrderRow): PreviewComponent[]
     })
   }
 
-  const chainName = buildChainName(row.chainType, row.operationRaw)
-  if (chainName) {
+  const chainNames = getChainItemNames(row.chainType, row.operationRaw)
+  for (const chainName of chainNames) {
     components.push({
       sourceRow: row.rowNumber,
       category: "Chain",
