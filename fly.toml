@@ -1,0 +1,45 @@
+# fly.toml — BlindStock Fly.io configuration
+# Region: syd (Sydney) — closest to Melbourne, Australia
+
+app = "blindstock"
+primary_region = "syd"
+
+[build]
+
+[env]
+  NODE_ENV = "production"
+
+# Secrets (set via `fly secrets set`, NOT here):
+#   DATABASE_URL  — PostgreSQL connection string
+#   JWT_SECRET    — JWT signing secret
+#   ALLOWED_ORIGIN — e.g. https://blindstock.fly.dev
+
+# Run DB migrations before deploying new version (not at startup)
+[deploy]
+  release_command = "npx prisma migrate deploy"
+
+[http_service]
+  internal_port = 3001
+  force_https = true
+  auto_stop_machines = "stop"
+  auto_start_machines = true
+  min_machines_running = 1
+  processes = ["app"]
+
+  [http_service.concurrency]
+    type = "connections"
+    hard_limit = 100
+    soft_limit = 80
+
+  # Give the app enough time to start after cold wake
+  [[http_service.checks]]
+    grace_period = "30s"
+    interval = "10s"
+    timeout = "5s"
+    method = "GET"
+    path = "/"
+
+[[vm]]
+  memory = "512mb"
+  cpu_kind = "shared"
+  cpus = 1
