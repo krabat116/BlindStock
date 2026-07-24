@@ -345,7 +345,7 @@ export async function confirmOrderDeduction(
       }
     } else if (dbItem.stockType === "AREA") {
       // AREA 타입: totalAreaMm2 기준으로 재고 확인
-      if ((dbItem.totalAreaMm2 ?? 0) < (previewItem.areaMm2 ?? 0)) {
+      if (Number(dbItem.totalAreaMm2 ?? 0) < (previewItem.areaMm2 ?? 0)) {
         const error = new Error(
           `Insufficient stock for ${previewItem.itemName}`
         )

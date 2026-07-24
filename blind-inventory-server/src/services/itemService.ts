@@ -105,7 +105,7 @@ export async function updateItemStock(
       throw error
     }
 
-    const previousAreaMm2 = existingItem.totalAreaMm2 ?? 0
+    const previousAreaMm2 = Number(existingItem.totalAreaMm2 ?? 0)
     const newTotalAreaMm2 = previousAreaMm2 + addedAreaMm2
 
     const result = await prisma.$transaction(async (tx) => {
@@ -229,8 +229,8 @@ export async function updateItemSettings(
   }
 
   if (payload.stockType === "AREA") {
-    const totalAreaMm2 = payload.totalAreaMm2 ?? existingItem.totalAreaMm2 ?? 0
-    const minimumAreaMm2 = payload.minimumAreaMm2 ?? existingItem.minimumAreaMm2 ?? 0
+    const totalAreaMm2 = payload.totalAreaMm2 ?? Number(existingItem.totalAreaMm2 ?? 0)
+    const minimumAreaMm2 = payload.minimumAreaMm2 ?? Number(existingItem.minimumAreaMm2 ?? 0)
     const rollWidthMm = payload.rollWidthMm !== undefined ? payload.rollWidthMm : (existingItem.rollWidthMm ?? null)
     const defaultRollLengthMm = payload.defaultRollLengthMm !== undefined
       ? payload.defaultRollLengthMm
@@ -688,7 +688,7 @@ export async function adjustItemStock(
       throw error
     }
 
-    const currentTotal = existingItem.totalAreaMm2 ?? 0
+    const currentTotal = Number(existingItem.totalAreaMm2 ?? 0)
 
     let newTotal: number
     let transactionAreaMm2: number

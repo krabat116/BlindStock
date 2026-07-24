@@ -1,5 +1,6 @@
 import * as XLSX from "xlsx"
 import type { ParsedOrderRow } from "./orderMapping"
+import { normalizeItemName } from "./utils/normalize"
 
 type RawRow = Record<string, unknown>
 
@@ -23,7 +24,7 @@ export type ParsedOrderSheetResult = {
 const columnAliases = {
   account: ["ACCOUNT"],
   customerName: ["CUSTOMER NAME"],
-  blindNo: ["BLIND NO"],
+  blindNo: ["BLIND NO", "ORDER NO.", "ORDER NO"],  // 2016: "ORDER NO."
   /**
    * The small blank column next to BLIND NO usually becomes COLUMN_3
    * after the two-row header build.
@@ -35,11 +36,11 @@ const columnAliases = {
   material: ["MATERIAL RANGE", "MATERIAL"],
   materialColour: ["MATERIAL COLOUR"],
   finish: ["FINISH"],
-  componentryColour: ["COMPONENTRY COLOUR"],
-  chainType: ["CHN", "CHAIN"],
+  componentryColour: ["COMPONENTRY COLOUR", "ACCESSORIES"],  // 2016: "ACCESSORIES"
+  chainType: ["CHN", "CHAIN", "MET CHN"],                   // 2016: "MET CHN"
   operationRaw: ["CHAIN SIZE/ OPERATION", "OPERATION", "CHAIN SIZE"],
   sideWdr: ["SIDE WDR", "SIDE WDR.", "WDR", "SIDE"],
-  roll: ["ROLL"],
+  roll: ["ROLL", "ROL."],                                    // 2016: "ROL."
   qty: ["QTY", "QUANTITY"],
 }
 
@@ -181,13 +182,31 @@ function parseContinuationRow(
         itemName = `${upperName} BRACKET`
       }
     } else {
-      itemName = rawName.trim().toUpperCase()
+      // Non-bracket items: normalize abbreviations and plural forms
+      itemName = normalizeItemName(rawName)
     }
 
     results.push({ sourceRow: rowNumber, account, customerName, itemName, quantity, category })
   }
 
   return results
+}
+
+/**
+ * 헤더 행 자동 감지.
+ * "WIDTH"와 "DROP"이 모두 포함된 행을 headerRow2로 간주하고,
+ * 그 직전 행을 headerRow1로 사용한다.
+ * 최대 25행까지 스캔하며, 찾지 못하면 기존 기본값(index 4/5)을 반환한다.
+ */
+function detectHeaderRowIndices(rows: unknown[][]): { idx1: number; idx2: number } {
+  const KEY_COLS = ["WIDTH", "DROP"]
+  for (let i = 1; i < Math.min(rows.length, 25); i++) {
+    const normalized = (rows[i] ?? []).map((v) => normalizeHeader(v))
+    const hasAll = KEY_COLS.every((key) => normalized.some((h) => h === key))
+    if (hasAll) return { idx1: Math.max(0, i - 1), idx2: i }
+  }
+  // 감지 실패 시 기존 기본값
+  return { idx1: 4, idx2: 5 }
 }
 
 function extractOrderSheetNo(rows: unknown[][]): number | null {
@@ -246,17 +265,14 @@ export function parseRecentOrderSheet(
     raw: false,
   })
 
-  // Based on your uploaded file:
-  // row index 4 => Excel row 5
-  // row index 5 => Excel row 6
-  // row index 6 => Excel row 7 (first data row)
-  const headerRow1 = rows[4] ?? []
-  const headerRow2 = rows[5] ?? []
-  const dataRows = rows.slice(6)
+  // 헤더 행 자동 감지 (WIDTH + DROP 키워드 기준)
+  const { idx1, idx2 } = detectHeaderRowIndices(rows)
+  const headerRow1 = rows[idx1] ?? []
+  const headerRow2 = rows[idx2] ?? []
+  const dataStartIdx = idx2 + 1
+  const dataRows = rows.slice(dataStartIdx)
 
   const headers = buildHeadersFromTwoRows(headerRow1, headerRow2)
-
-  console.log("🧾 Combined headers:", headers)
 
   const normalizedRows: RawRow[] = dataRows.map((row) => {
     const record: RawRow = {}
@@ -267,8 +283,6 @@ export function parseRecentOrderSheet(
 
     return record
   })
-
-  console.log("🧾 First normalized row:", normalizedRows[0])
 
   const parsedRows: ParsedOrderRow[] = []
   const continuationComponents: ParsedContinuationComponent[] = []
@@ -300,8 +314,10 @@ export function parseRecentOrderSheet(
 
     // Detect continuation rows: no blind number, but material cell has an "NxX ..." pattern
     if (!blindNo && /\d+\s*[Xx]\s+/i.test(materialRange)) {
-      const rowNumber = index + 7
+      const rowNumber = index + dataStartIdx + 1 // 1-based Excel row number
       const category = matchCategory(materialRange, rules)
+      // "IGNORE" is a reserved category name — skip this row entirely
+      if (category.toUpperCase() === "IGNORE") return
       continuationComponents.push(
         ...parseContinuationRow(rowNumber, account, customerName, materialRange, category, lastComponentryColour)
       )
@@ -352,7 +368,7 @@ export function parseRecentOrderSheet(
     if (!hasMeaningfulOrderData) return
 
     parsedRows.push({
-      rowNumber: index + 7, // since data starts at Excel row 7
+      rowNumber: index + dataStartIdx + 1, // 1-based Excel row number
       account,
       customerName,
       width,
@@ -369,10 +385,7 @@ export function parseRecentOrderSheet(
     })
   })
 
-  console.log("🧾 Parsed order rows:", parsedRows)
-
   const orderSheetNo = extractOrderSheetNo(rows)
-  console.log("🧾 Extracted orderSheetNo:", orderSheetNo)
   const accountName = parsedRows[0]?.account ?? ""
   const totalItems = parsedRows.reduce((sum, row) => sum + row.qty, 0)
 

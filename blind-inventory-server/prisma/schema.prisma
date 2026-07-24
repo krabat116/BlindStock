@@ -38,8 +38,8 @@ model Item {
   cutoffLengthMm   Int?  // 막대 하나당 사용 불가 끝부분 길이(mm), 기본값 800
 
   // AREA type (fabric/material)
-  totalAreaMm2        Int?
-  minimumAreaMm2      Int?
+  totalAreaMm2        BigInt?
+  minimumAreaMm2      BigInt?
   rollWidthMm         Int?  // Fabric roll width (mm) — used in FFDH strip packing
   defaultRollLengthMm Int?  // Standard length of one roll (mm) — used to display roll count
 
@@ -65,7 +65,7 @@ model Transaction {
   lengthMm       Int?
 
   // AREA transaction
-  areaMm2        Int?
+  areaMm2        BigInt?
 
   source         String?
   note           String?

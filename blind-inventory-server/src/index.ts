@@ -14,6 +14,13 @@ import { requireAuth } from "./middleware/authMiddleware"
 
 const app = express()
 
+// Prisma returns `bigint` for BigInt schema fields (totalAreaMm2, areaMm2).
+// JSON.stringify does not support bigint natively, so convert to Number here.
+// The area values involved (even millions of m²) fit safely in JS Number.
+app.set("json replacer", (_key: string, value: unknown) =>
+  typeof value === "bigint" ? Number(value) : value
+)
+
 app.use(
   cors({
     origin: process.env.ALLOWED_ORIGIN || "http://localhost:5173",
