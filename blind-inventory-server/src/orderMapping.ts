@@ -21,6 +21,14 @@ export type ParsedOrderRow = {
    * Example: "43", "43A"
    */
   tubeOverride?: string | null
+
+  /**
+   * True when the BLIND NO cell contains "RESKIN".
+   * RESKIN orders are fabric-replacement jobs — only the fabric (AREA type)
+   * should be deducted; all other components (finish, chain, winder, pin, tube)
+   * are left untouched.
+   */
+  isReskin?: boolean
 }
 
 export type PreviewComponent = {
@@ -315,6 +323,9 @@ const CAP_COLOUR_OVERRIDES: Record<string, string> = {
 }
 
 export function mapOrderRowToComponents(row: ParsedOrderRow): PreviewComponent[] {
+  // RESKIN orders: fabric replacement only — skip all non-fabric components
+  if (row.isReskin) return []
+
   const components: PreviewComponent[] = []
   const qty = row.qty > 0 ? row.qty : 1
 

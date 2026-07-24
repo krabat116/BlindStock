@@ -34,7 +34,7 @@ const columnAliases = {
   width: ["WIDTH"],
   drop: ["DROP"],
   material: ["MATERIAL RANGE", "MATERIAL"],
-  materialColour: ["MATERIAL COLOUR"],
+  materialColour: ["MATERIAL COLOUR", "COLOUR", "COLOR"],
   finish: ["FINISH"],
   componentryColour: ["COMPONENTRY COLOUR", "ACCESSORIES"],  // 2016: "ACCESSORIES"
   chainType: ["CHN", "CHAIN", "MET CHN"],                   // 2016: "MET CHN"
@@ -367,6 +367,8 @@ export function parseRecentOrderSheet(
 
     if (!hasMeaningfulOrderData) return
 
+    const isReskin = /RESKIN/i.test(blindNo)
+
     parsedRows.push({
       rowNumber: index + dataStartIdx + 1, // 1-based Excel row number
       account,
@@ -382,6 +384,7 @@ export function parseRecentOrderSheet(
       roll,
       qty: qtyRaw && qtyRaw > 0 ? qtyRaw : 1,
       tubeOverride,
+      isReskin,
     })
   })
 
