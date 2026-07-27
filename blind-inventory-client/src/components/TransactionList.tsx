@@ -35,24 +35,35 @@ export default function TransactionList({
 }: TransactionListProps) {
   const [page, setPage] = useState(1)
   const [dateRange, setDateRange] = useState<DateRange>("30d")
+  const [search, setSearch] = useState("")
 
-  // Reset to first page when filter or transaction list changes
+  // Reset to first page when any filter or transaction list changes
   useEffect(() => {
     setPage(1)
-  }, [transactions, dateRange])
+  }, [transactions, dateRange, search])
 
   const filtered = useMemo(() => {
     const cutoff = getCutoff(dateRange)
-    if (!cutoff) return transactions
-    return transactions.filter((t) => new Date(t.createdAt) >= cutoff)
-  }, [transactions, dateRange])
+    const q = search.trim().toLowerCase()
+
+    return transactions.filter((t) => {
+      if (cutoff && new Date(t.createdAt) < cutoff) return false
+      if (!q) return true
+      return (
+        t.itemName?.toLowerCase().includes(q) ||
+        t.source?.toLowerCase().includes(q) ||
+        t.note?.toLowerCase().includes(q) ||
+        getTypeLabel(t.type).toLowerCase().includes(q)
+      )
+    })
+  }, [transactions, dateRange, search])
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE))
   const paged = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE)
 
   return (
     <section className="mt-6 rounded-2xl bg-white p-6 shadow-sm">
-      <div className="mb-4 flex items-center justify-between gap-4">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold text-gray-900">
             Recent Transactions
@@ -62,21 +73,32 @@ export default function TransactionList({
           </p>
         </div>
 
-        {/* Date range filter */}
-        <div className="flex shrink-0 rounded-md border border-gray-200 overflow-hidden text-xs">
-          {DATE_RANGE_OPTIONS.map((opt) => (
-            <button
-              key={opt.value}
-              onClick={() => setDateRange(opt.value)}
-              className={`px-3 py-1.5 transition-colors border-l first:border-l-0 border-gray-200 ${
-                dateRange === opt.value
-                  ? "bg-gray-900 text-white"
-                  : "text-gray-600 hover:bg-gray-50"
-              }`}
-            >
-              {opt.label}
-            </button>
-          ))}
+        <div className="flex flex-wrap items-center gap-2">
+          {/* Search */}
+          <input
+            type="text"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search item, source, note…"
+            className="rounded-md border border-gray-200 px-3 py-1.5 text-xs text-gray-700 placeholder-gray-400 outline-none focus:border-gray-400 w-52"
+          />
+
+          {/* Date range filter */}
+          <div className="flex shrink-0 rounded-md border border-gray-200 overflow-hidden text-xs">
+            {DATE_RANGE_OPTIONS.map((opt) => (
+              <button
+                key={opt.value}
+                onClick={() => setDateRange(opt.value)}
+                className={`px-3 py-1.5 transition-colors border-l first:border-l-0 border-gray-200 ${
+                  dateRange === opt.value
+                    ? "bg-gray-900 text-white"
+                    : "text-gray-600 hover:bg-gray-50"
+                }`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
