@@ -3,7 +3,7 @@
 const BASE_URL = import.meta.env.VITE_API_URL ?? ""
 
 export function apiFetch(path: string, options: RequestInit = {}): Promise<Response> {
-  const token = localStorage.getItem("blind_token")
+  const token = sessionStorage.getItem("blind_token")
 
   const headers: Record<string, string> = {
     "Content-Type": "application/json",
@@ -21,8 +21,8 @@ export function apiFetch(path: string, options: RequestInit = {}): Promise<Respo
     headers,
   }).then((res) => {
     if (res.status === 401) {
-      localStorage.removeItem("blind_token")
-      localStorage.removeItem("blind_user")
+      sessionStorage.removeItem("blind_token")
+      sessionStorage.removeItem("blind_user")
       window.location.href = "/login"
     }
     return res

@@ -17,8 +17,8 @@ const AuthContext = createContext<AuthContextValue | null>(null)
 
 function loadFromStorage(): { token: string | null; user: AuthUser | null } {
   try {
-    const token = localStorage.getItem("blind_token")
-    const userRaw = localStorage.getItem("blind_user")
+    const token = sessionStorage.getItem("blind_token")
+    const userRaw = sessionStorage.getItem("blind_user")
     const user = userRaw ? (JSON.parse(userRaw) as AuthUser) : null
     return { token, user }
   } catch {
@@ -32,15 +32,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   const [user, setUser] = useState<AuthUser | null>(stored.user)
 
   const login = useCallback((newToken: string, newUser: AuthUser) => {
-    localStorage.setItem("blind_token", newToken)
-    localStorage.setItem("blind_user", JSON.stringify(newUser))
+    sessionStorage.setItem("blind_token", newToken)
+    sessionStorage.setItem("blind_user", JSON.stringify(newUser))
     setToken(newToken)
     setUser(newUser)
   }, [])
 
   const logout = useCallback(() => {
-    localStorage.removeItem("blind_token")
-    localStorage.removeItem("blind_user")
+    sessionStorage.removeItem("blind_token")
+    sessionStorage.removeItem("blind_user")
     setToken(null)
     setUser(null)
   }, [])
