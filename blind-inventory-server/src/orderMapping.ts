@@ -29,6 +29,20 @@ export type ParsedOrderRow = {
    * are left untouched.
    */
   isReskin?: boolean
+
+  // ── Raw fields preserved for work order display ──────────────────────────
+  /** Raw BLIND NO cell value, e.g. "1 OF 6" or "RESKIN" */
+  blindNo: string
+  /** ROOM column value */
+  room: string
+  /** MATERIAL RANGE cell before combining with colour, e.g. "FOCUS" */
+  materialRangePart: string
+  /** COLOUR cell before combining with range, e.g. "JARRAH" */
+  materialColourPart: string
+  /** TAPE column value */
+  tape: string
+  /** ACCESSORIES & NOTES column value */
+  accessoriesNotes: string
 }
 
 export type PreviewComponent = {

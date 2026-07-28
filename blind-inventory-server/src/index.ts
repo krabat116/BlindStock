@@ -10,6 +10,7 @@ import orderRoutes from "./routes/orderRoutes"
 import customerRoutes from "./routes/customerRoutes"
 import adminRoutes from "./routes/adminRoutes"
 import continuationRuleRoutes from "./routes/continuationRuleRoutes"
+import workOrderRoutes from "./routes/workOrderRoutes"
 import { requireAuth } from "./middleware/authMiddleware"
 
 const app = express()
@@ -44,6 +45,7 @@ app.use("/orders", requireAuth, orderRoutes)
 app.use("/customers", requireAuth, customerRoutes)
 app.use("/admin", requireAuth, adminRoutes)
 app.use("/continuation-rules", requireAuth, continuationRuleRoutes)
+app.use("/work-orders", requireAuth, workOrderRoutes)
 
 // SPA catch-all — serve index.html for any unmatched route (client-side routing)
 app.use((_req, res) => {

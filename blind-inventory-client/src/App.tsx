@@ -6,6 +6,7 @@ import CustomersPage from "./pages/customers/CustomersPage"
 import CustomerDetailPage from "./pages/customers/CustomerDetailPage"
 import LoginPage from "./pages/auth/LoginPage"
 import SettingsPage from "./pages/settings/SettingsPage"
+import WorkOrdersPage from "./pages/workorders/WorkOrdersPage"
 
 function PrivateRoute({ children }: { children: React.ReactNode }) {
   const { token } = useAuth()
@@ -33,6 +34,7 @@ function AppRoutes() {
         <Route path="/" element={<InventoryPage />} />
         <Route path="/customers" element={<CustomersPage />} />
         <Route path="/customers/:id" element={<CustomerDetailPage />} />
+        <Route path="/work-orders" element={<WorkOrdersPage />} />
         <Route
           path="/settings"
           element={

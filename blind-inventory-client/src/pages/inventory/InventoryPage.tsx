@@ -192,33 +192,23 @@ export default function InventoryPage() {
   }
 
   async function handleConfirmDeduction() {
+    if (!uploadedFile) return
     try {
       setOrderPreviewLoading(true)
       setOrderPreviewError("")
 
-      const payload = {
-        year: Number(orderYear),
-        month: Number(orderMonth),
-        fileName: uploadedFile?.name ?? "",
-        accountName: orderAccountName,
-        orderSheetNo,
-        totalItems: orderTotalItems,
-        previewItems: orderPreview
-          .filter((item) => item.matched && item.itemId !== null)
-          .map((item) => ({
-            itemId: item.itemId!,
-            itemName: item.itemName,
-            category: item.category,
-            quantity: item.quantity,
-            ...(item.lengthMm !== null ? { lengthMm: item.lengthMm } : {}),
-            ...(item.areaMm2 !== null ? { areaMm2: item.areaMm2 } : {}),
-            sourceRows: item.sourceRows,
-          })),
-      }
+      const formData = new FormData()
+      formData.append("file", uploadedFile)
+      formData.append("year", orderYear)
+      formData.append("month", orderMonth)
+      formData.append("fileName", uploadedFile.name)
+      formData.append("accountName", orderAccountName)
+      formData.append("orderSheetNo", String(orderSheetNo ?? 0))
+      formData.append("totalItems", String(orderTotalItems))
 
       const response = await apiFetch("/orders/confirm-deduction", {
         method: "POST",
-        body: JSON.stringify(payload),
+        body: formData,
       })
 
       if (!response.ok) {
@@ -389,30 +379,19 @@ export default function InventoryPage() {
           continue
         }
 
-        // Step 3: Confirm deduction
-        const payload = {
-          year: Number(batchYear),
-          month: Number(batchMonth),
-          fileName: file.name,
-          accountName: previewData.accountName,
-          orderSheetNo: previewData.orderSheetNo,
-          totalItems: previewData.totalItems,
-          previewItems: previewData.preview
-            .filter((item) => item.matched && item.itemId !== null)
-            .map((item) => ({
-              itemId: item.itemId!,
-              itemName: item.itemName,
-              category: item.category,
-              quantity: item.quantity,
-              ...(item.lengthMm !== null ? { lengthMm: item.lengthMm } : {}),
-              ...(item.areaMm2 !== null ? { areaMm2: item.areaMm2 } : {}),
-              sourceRows: item.sourceRows,
-            })),
-        }
+        // Step 3: Confirm deduction (re-upload file as multipart)
+        const confirmFormData = new FormData()
+        confirmFormData.append("file", file)
+        confirmFormData.append("year", batchYear)
+        confirmFormData.append("month", batchMonth)
+        confirmFormData.append("fileName", file.name)
+        confirmFormData.append("accountName", previewData.accountName)
+        confirmFormData.append("orderSheetNo", String(previewData.orderSheetNo ?? 0))
+        confirmFormData.append("totalItems", String(previewData.totalItems))
 
         const confirmRes = await apiFetch("/orders/confirm-deduction", {
           method: "POST",
-          body: JSON.stringify(payload),
+          body: confirmFormData,
         })
 
         if (!confirmRes.ok) {

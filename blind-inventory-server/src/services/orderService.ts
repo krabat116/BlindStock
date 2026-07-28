@@ -1,3 +1,4 @@
+import crypto from "crypto"
 import prisma from "../lib/prisma"
 import { parseRecentOrderSheet } from "../parseRecentOrderSheet"
 import { mapOrderRowToComponents, type PreviewComponent } from "../orderMapping"
@@ -6,30 +7,14 @@ import {
   normalizeCategoryName,
   normalizeItemName,
 } from "../utils/normalize"
+import { saveWorkOrderSheet } from "./workOrderService"
 
-type DeductionRequestItem = {
-  itemId: number
-  itemName: string
-  category: string
-  quantity: number
-  lengthMm?: number // LENGTH 타입 아이템의 차감할 총 길이(mm)
-  areaMm2?: number  // AREA 타입 아이템의 차감할 총 면적(mm²)
-  sourceRows: number[]
-}
-
-type ConfirmOrderDeductionInput = {
-  year: number
-  month: number
-  fileName: string
-  fileHash?: string
-  accountName: string
-  orderSheetNo: number
-  totalItems: number
-  previewItems?: DeductionRequestItem[]
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Preview
+// ─────────────────────────────────────────────────────────────────────────────
 
 /**
- * Preview one uploaded order Excel file
+ * Preview one uploaded order Excel file.
  * - parse the file
  * - extract components
  * - aggregate duplicate components
@@ -40,8 +25,7 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
   const parsed = parseRecentOrderSheet(fileBuffer, continuationRules)
   const flatComponents = parsed.rows.flatMap(mapOrderRowToComponents)
 
-  // Convert continuation components (brackets, motors, or any user-defined category)
-  // into the same PreviewComponent shape so they flow through the same aggregation
+  // Continuation components → same PreviewComponent shape
   const continuationPreviewComponents: PreviewComponent[] = parsed.continuationComponents.map((cc) => ({
     sourceRow: cc.sourceRow,
     category: cc.category,
@@ -57,7 +41,7 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
       category: string
       itemName: string
       quantity: number
-      totalLengthMm: number // LENGTH 타입 아이템 전용: 행별 길이의 합산
+      totalLengthMm: number
       sourceRows: number[]
     }
   >()
@@ -83,8 +67,7 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
 
   const aggregatedComponents = Array.from(aggregatedMap.values())
 
-  // ── Material (fabric/천) — strip-packing per material type ──────────
-  // Group parsed rows by material name, then compute fabric area via FFDH.
+  // ── Material (fabric) — strip-packing per material type ──────────────────
   const materialGroupMap = new Map<
     string,
     { blinds: Array<{ widthMm: number; dropMm: number }>; sourceRows: number[] }
@@ -108,11 +91,7 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
     }
   }
 
-  const dbItems = await prisma.item.findMany({
-    include: {
-      category: true,
-    },
-  })
+  const dbItems = await prisma.item.findMany({ include: { category: true } })
 
   const materialComponents = Array.from(materialGroupMap.entries()).map(
     ([materialName, { blinds, sourceRows }]) => {
@@ -132,8 +111,6 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
     }
   )
 
-  // Categories that are always LENGTH type — used to infer stockType
-  // for items not yet in the database (missing items).
   const LENGTH_CATEGORIES = new Set(["Finish", "Tube"])
   const AREA_CATEGORIES = new Set(["Fabric"])
 
@@ -203,290 +180,285 @@ export async function previewOrderUpload(fileBuffer: Buffer) {
   }
 }
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Confirm — refactored to re-parse the file and run everything atomically
+// ─────────────────────────────────────────────────────────────────────────────
+
+interface ConfirmParams {
+  year: number
+  month: number
+  fileName: string
+  accountName: string
+  orderSheetNo: number
+  totalItems: number
+}
+
 /**
- * Confirm stock deduction and save customer order history
- * - validates payload
- * - verifies item/category/name match
- * - checks stock availability
- * - prevents duplicate order uploads
- * - creates customer if not found
- * - creates customer order
- * - deducts stock
- * - creates transaction records
+ * Confirm stock deduction and save work order data.
+ *
+ * Flow (all pre-transaction):
+ *  1. Compute fileHash (SHA-256)
+ *  2. Check duplicate fileHash
+ *  3. Check duplicate orderYear + orderSheetNo
+ *  4. Parse Excel — derive components, verify stock
+ *
+ * Then in ONE prisma.$transaction():
+ *  5. find-or-create Customer
+ *  6. Create CustomerOrder
+ *  7. Deduct inventory + Transaction records
+ *  8. Create UploadedWorkOrderSheet + WorkOrderGroups + WorkOrderRows
  */
 export async function confirmOrderDeduction(
-  input: ConfirmOrderDeductionInput
+  fileBuffer: Buffer,
+  params: ConfirmParams,
+  uploadedById: number
 ) {
-  const {
-    year,
-    month,
-    fileName,
-    fileHash,
-    accountName,
-    orderSheetNo,
-    totalItems,
-    previewItems,
-  } = input
+  const { year, month, fileName, accountName, orderSheetNo, totalItems } = params
 
-  /**
-   * Validate top-level upload metadata
-   */
-  if (!Number.isInteger(year)) {
-    const error = new Error("Valid year is required")
-    ;(error as Error & { status?: number }).status = 400
-    throw error
-  }
+  // ── Basic validation ──────────────────────────────────────────────────────
+  if (!Number.isInteger(year)) throw clientError("Valid year is required")
+  if (!Number.isInteger(month) || month < 1 || month > 12) throw clientError("Valid month is required")
+  if (!accountName) throw clientError("accountName is required")
+  if (!Number.isInteger(orderSheetNo)) throw clientError("Valid orderSheetNo is required")
+  if (!Number.isInteger(totalItems) || totalItems < 0) throw clientError("Valid totalItems is required")
 
-  if (!Number.isInteger(month) || month < 1 || month > 12) {
-    const error = new Error("Valid month is required")
-    ;(error as Error & { status?: number }).status = 400
-    throw error
-  }
+  // ── 1. Compute fileHash ───────────────────────────────────────────────────
+  const fileHash = crypto.createHash("sha256").update(fileBuffer).digest("hex")
+  const fileSize = fileBuffer.length
 
-  if (!accountName || typeof accountName !== "string") {
-    const error = new Error("accountName is required")
-    ;(error as Error & { status?: number }).status = 400
-    throw error
-  }
-
-  if (!Number.isInteger(orderSheetNo)) {
-    const error = new Error("Valid orderSheetNo is required")
-    ;(error as Error & { status?: number }).status = 400
-    throw error
-  }
-
-  if (!Number.isInteger(totalItems) || totalItems < 0) {
-    const error = new Error("Valid totalItems is required")
-    ;(error as Error & { status?: number }).status = 400
-    throw error
-  }
-
-  if (!Array.isArray(previewItems) || previewItems.length === 0) {
-    const error = new Error("Preview items are required")
-    ;(error as Error & { status?: number }).status = 400
-    throw error
-  }
-
-  /**
-   * Validate preview item shape
-   */
-  for (const item of previewItems) {
-    if (
-      !Number.isInteger(item.itemId) ||
-      typeof item.itemName !== "string" ||
-      typeof item.category !== "string" ||
-      typeof item.quantity !== "number" ||
-      item.quantity <= 0
-    ) {
-      const error = new Error("Invalid preview item payload")
-      ;(error as Error & { status?: number }).status = 400
-      throw error
-    }
-  }
-
-  const itemIds = previewItems.map((item) => item.itemId)
-
-  const dbItems = await prisma.item.findMany({
-    where: {
-      id: {
-        in: itemIds,
-      },
-    },
-    include: {
-      category: true,
-    },
+  // ── 2. Duplicate fileHash check ───────────────────────────────────────────
+  const existingSheet = await prisma.uploadedWorkOrderSheet.findUnique({
+    where: { fileHash },
+    select: { customerOrder: { select: { orderYear: true, orderSheetNo: true } } },
   })
-
-  if (dbItems.length !== itemIds.length) {
-    const error = new Error(
-      "One or more preview items no longer exist in inventory"
+  if (existingSheet) {
+    const ref = existingSheet.customerOrder
+    throw clientError(
+      `Duplicate file detected: this Excel file was already uploaded` +
+      (ref ? ` (order sheet #${ref.orderSheetNo}, ${ref.orderYear})` : "") +
+      `. Work order data was not created again.`
     )
-    ;(error as Error & { status?: number }).status = 400
-    throw error
   }
 
-  /**
-   * Verify exact matching and stock availability
-   */
-  for (const previewItem of previewItems) {
-    const dbItem = dbItems.find((item) => item.id === previewItem.itemId)
+  // ── 3. Duplicate orderYear + orderSheetNo check ───────────────────────────
+  const existingOrder = await prisma.customerOrder.findUnique({
+    where: { orderYear_orderSheetNo: { orderYear: year, orderSheetNo } },
+  })
+  if (existingOrder) {
+    throw clientError(
+      `Duplicate upload detected: order sheet no ${orderSheetNo} already exists for year ${year}.`
+    )
+  }
 
-    if (!dbItem) {
-      const error = new Error(
-        `Missing inventory item for ${previewItem.itemName}`
-      )
-      ;(error as Error & { status?: number }).status = 400
-      throw error
+  // ── 4. Parse Excel + compute required components ──────────────────────────
+  const continuationRules = await prisma.continuationRowRule.findMany()
+  const parsed = parseRecentOrderSheet(fileBuffer, continuationRules)
+
+  const flatComponents = parsed.rows.flatMap(mapOrderRowToComponents)
+  const continuationPreviewComponents: PreviewComponent[] = parsed.continuationComponents.map((cc) => ({
+    sourceRow: cc.sourceRow,
+    category: cc.category,
+    itemName: cc.itemName,
+    quantity: cc.quantity,
+  }))
+  const allComponents = [...flatComponents, ...continuationPreviewComponents]
+
+  // Aggregate components (same as preview)
+  const aggregatedMap = new Map<
+    string,
+    { category: string; itemName: string; quantity: number; totalLengthMm: number; sourceRows: number[] }
+  >()
+  for (const comp of allComponents) {
+    const key = `${comp.category}::${comp.itemName}`
+    if (!aggregatedMap.has(key)) {
+      aggregatedMap.set(key, { category: comp.category, itemName: comp.itemName, quantity: 0, totalLengthMm: 0, sourceRows: [] })
     }
+    const entry = aggregatedMap.get(key)!
+    entry.quantity += comp.quantity
+    entry.totalLengthMm += comp.lengthMm ?? 0
+    entry.sourceRows.push(comp.sourceRow)
+  }
 
-    const categoryMatched =
-      normalizeCategoryName(dbItem.category.name) ===
-      normalizeCategoryName(previewItem.category)
+  // Fabric area components
+  const materialGroupMap = new Map<
+    string,
+    { blinds: Array<{ widthMm: number; dropMm: number }>; sourceRows: number[] }
+  >()
+  for (const row of parsed.rows) {
+    if (!row.material || row.width === null || row.drop === null) continue
+    const matName = row.material.trim().toUpperCase()
+    if (!matName) continue
+    if (!materialGroupMap.has(matName)) materialGroupMap.set(matName, { blinds: [], sourceRows: [] })
+    const g = materialGroupMap.get(matName)!
+    g.sourceRows.push(row.rowNumber)
+    const qty = row.qty > 0 ? row.qty : 1
+    for (let i = 0; i < qty; i++) g.blinds.push({ widthMm: row.width!, dropMm: row.drop! })
+  }
 
-    const itemNameMatched =
-      normalizeItemName(dbItem.name) === normalizeItemName(previewItem.itemName)
+  // Load all DB items once
+  const dbItems = await prisma.item.findMany({ include: { category: true } })
 
-    if (!categoryMatched || !itemNameMatched) {
-      const error = new Error(
-        `Inventory item mismatch for ${previewItem.itemName}`
-      )
-      ;(error as Error & { status?: number }).status = 400
-      throw error
-    }
+  // ── 4a. Build deduction list for count/length components ──────────────────
+  type DeductionItem = {
+    itemId: number
+    itemName: string
+    category: string
+    quantity: number
+    lengthMm: number | null
+    areaMm2: number | null
+    sourceRows: number[]
+  }
 
+  const deductionItems: DeductionItem[] = []
+
+  for (const comp of Array.from(aggregatedMap.values())) {
+    const dbItem = dbItems.find(
+      (item) =>
+        normalizeItemName(item.name) === normalizeItemName(comp.itemName) &&
+        normalizeCategoryName(item.category.name) === normalizeCategoryName(comp.category)
+    )
+    if (!dbItem) continue // skip items not in DB (user should have created them first)
+
+    // Stock availability check
     if (dbItem.stockType === "LENGTH") {
-      // LENGTH 타입: totalLengthMm 기준으로 재고 확인
-      if ((dbItem.totalLengthMm ?? 0) < (previewItem.lengthMm ?? 0)) {
-        const error = new Error(
-          `Insufficient stock for ${previewItem.itemName}`
-        )
-        ;(error as Error & { status?: number }).status = 400
-        throw error
-      }
-    } else if (dbItem.stockType === "AREA") {
-      // AREA 타입: totalAreaMm2 기준으로 재고 확인
-      if (Number(dbItem.totalAreaMm2 ?? 0) < (previewItem.areaMm2 ?? 0)) {
-        const error = new Error(
-          `Insufficient stock for ${previewItem.itemName}`
-        )
-        ;(error as Error & { status?: number }).status = 400
-        throw error
+      if ((dbItem.totalLengthMm ?? 0) < (comp.totalLengthMm || 0)) {
+        throw clientError(`Insufficient stock for ${comp.itemName}`)
       }
     } else {
-      // COUNT 타입: quantity 기준으로 재고 확인
-      if ((dbItem.quantity ?? 0) < previewItem.quantity) {
-        const error = new Error(
-          `Insufficient stock for ${previewItem.itemName}`
-        )
-        ;(error as Error & { status?: number }).status = 400
-        throw error
+      if ((dbItem.quantity ?? 0) < comp.quantity) {
+        throw clientError(`Insufficient stock for ${comp.itemName}`)
       }
     }
+
+    deductionItems.push({
+      itemId: dbItem.id,
+      itemName: dbItem.name,
+      category: dbItem.category.name,
+      quantity: comp.quantity,
+      lengthMm: comp.totalLengthMm > 0 ? comp.totalLengthMm : null,
+      areaMm2: null,
+      sourceRows: comp.sourceRows,
+    })
   }
 
-  const result = await prisma.$transaction(async (tx) => {
-    /**
-     * Prevent duplicate order history records
-     * ORDER SHEET NO resets every year,
-     * so year + orderSheetNo is the main duplicate key.
-     */
-    const existingOrder = await tx.customerOrder.findUnique({
-      where: {
-        orderYear_orderSheetNo: {
-          orderYear: year,
-          orderSheetNo,
-        },
-      },
-    })
+  // ── 4b. Build deduction list for fabric (AREA) components ─────────────────
+  for (const [matName, { blinds, sourceRows }] of materialGroupMap.entries()) {
+    const dbItem = dbItems.find(
+      (item) =>
+        item.name.toUpperCase() === matName.toUpperCase() &&
+        normalizeCategoryName(item.category.name) === "FABRIC"
+    )
+    if (!dbItem) continue // skip unmatched fabric items
 
-    if (existingOrder) {
-      const error = new Error(
-        `Duplicate upload detected: order sheet no ${orderSheetNo} already exists for year ${year}.`
-      )
-      ;(error as Error & { status?: number }).status = 400
-      throw error
+    const rollWidthMm = dbItem.rollWidthMm ?? ROLL_WIDTH_MM
+    const areaMm2 = computeFabricAreaMm2(blinds, rollWidthMm)
+
+    if (Number(dbItem.totalAreaMm2 ?? 0) < areaMm2) {
+      throw clientError(`Insufficient stock for ${matName}`)
     }
 
-    /**
-     * Find existing customer by accountName
-     * or create a new customer automatically
-     */
-    let customer = await tx.customer.findUnique({
-      where: {
-        accountName,
-      },
+    deductionItems.push({
+      itemId: dbItem.id,
+      itemName: dbItem.name,
+      category: dbItem.category.name,
+      quantity: blinds.length,
+      lengthMm: null,
+      areaMm2,
+      sourceRows,
     })
+  }
 
-    if (!customer) {
-      customer = await tx.customer.create({
+  // ── 5-8. Single atomic transaction ───────────────────────────────────────
+  const result = await prisma.$transaction(
+    async (tx) => {
+      // Find or create customer
+      let customer = await tx.customer.findUnique({ where: { accountName } })
+      if (!customer) {
+        customer = await tx.customer.create({ data: { accountName } })
+      }
+
+      // Create CustomerOrder
+      const customerOrder = await tx.customerOrder.create({
         data: {
-          accountName,
+          customerId: customer.id,
+          orderYear: year,
+          orderMonth: month,
+          orderSheetNo,
+          totalItems,
+          fileName,
+          fileHash,
+          status: "COMPLETED",
         },
       })
-    }
 
-    /**
-     * Save customer order history
-     */
-    await tx.customerOrder.create({
-      data: {
-        customerId: customer.id,
-        orderYear: year,
-        orderMonth: month,
-        orderSheetNo,
-        totalItems,
+      const source = `${year}/${String(month).padStart(2, "0")} · #${orderSheetNo}`
+
+      // Deduct inventory + Transaction records
+      for (const item of deductionItems) {
+        const note = `Order upload deduction (rows: ${item.sourceRows.join(", ")})`
+
+        if (item.areaMm2 !== null) {
+          await tx.item.update({
+            where: { id: item.itemId },
+            data: { totalAreaMm2: { decrement: item.areaMm2 } },
+          })
+          await tx.transaction.create({
+            data: { itemId: item.itemId, type: "out", areaMm2: item.areaMm2, source, note },
+          })
+        } else if (item.lengthMm !== null) {
+          await tx.item.update({
+            where: { id: item.itemId },
+            data: { totalLengthMm: { decrement: item.lengthMm } },
+          })
+          await tx.transaction.create({
+            data: { itemId: item.itemId, type: "out", lengthMm: item.lengthMm, source, note },
+          })
+        } else {
+          await tx.item.update({
+            where: { id: item.itemId },
+            data: { quantity: { decrement: item.quantity } },
+          })
+          await tx.transaction.create({
+            data: { itemId: item.itemId, type: "out", quantity: item.quantity, source, note },
+          })
+        }
+      }
+
+      // Save work order sheet + groups + rows (all inside same tx)
+      await saveWorkOrderSheet({
+        tx,
+        rows: parsed.rows,
+        accessoryRows: parsed.accessoryRows,
+        uploadedById,
         fileName,
         fileHash,
-        status: "COMPLETED",
-      },
-    })
+        fileSize,
+        customerOrderId: customerOrder.id,
+      })
 
-    /**
-     * Deduct stock and save inventory transactions
-     * LENGTH 타입은 totalLengthMm 차감
-     * AREA 타입은 totalAreaMm2 차감
-     * COUNT 타입은 quantity 차감
-     */
-    for (const previewItem of previewItems) {
-      const dbItem = dbItems.find((item) => item.id === previewItem.itemId)!
-      const source = `${year}/${String(month).padStart(2, "0")} · #${orderSheetNo}`
-      const note = `Order upload deduction (rows: ${previewItem.sourceRows.join(", ")})`
-
-      if (dbItem.stockType === "LENGTH" && previewItem.lengthMm) {
-        await tx.item.update({
-          where: { id: dbItem.id },
-          data: { totalLengthMm: { decrement: previewItem.lengthMm } },
-        })
-        await tx.transaction.create({
-          data: { itemId: dbItem.id, type: "out", lengthMm: previewItem.lengthMm, source, note },
-        })
-      } else if (dbItem.stockType === "AREA" && previewItem.areaMm2) {
-        await tx.item.update({
-          where: { id: dbItem.id },
-          data: { totalAreaMm2: { decrement: previewItem.areaMm2 } },
-        })
-        await tx.transaction.create({
-          data: { itemId: dbItem.id, type: "out", areaMm2: previewItem.areaMm2, source, note },
-        })
-      } else {
-        await tx.item.update({
-          where: { id: dbItem.id },
-          data: { quantity: { decrement: previewItem.quantity } },
-        })
-        await tx.transaction.create({
-          data: { itemId: dbItem.id, type: "out", quantity: previewItem.quantity, source, note },
-        })
+      return {
+        success: true,
+        customerId: customer.id,
+        orderSheetNo,
+        year,
+        month,
+        totalItems,
       }
-    }
-
-    return {
-      success: true,
-      customerId: customer.id,
-      orderSheetNo,
-      year,
-      month,
-      totalItems,
-    }
-  }, { timeout: 30000 })
+    },
+    { timeout: 30000 }
+  )
 
   return result
 }
 
-/**
- * GET /orders/stats
- * Returns all CustomerOrders with year, month, totalItems for factory-wide charting
- */
+// ─────────────────────────────────────────────────────────────────────────────
+// Order stats
+// ─────────────────────────────────────────────────────────────────────────────
+
 export async function getOrderStats() {
   const orders = await prisma.customerOrder.findMany({
-    select: {
-      orderYear: true,
-      orderMonth: true,
-      totalItems: true,
-    },
-    orderBy: [
-      { orderYear: "asc" },
-      { orderMonth: "asc" },
-    ],
+    select: { orderYear: true, orderMonth: true, totalItems: true },
+    orderBy: [{ orderYear: "asc" }, { orderMonth: "asc" }],
   })
 
   return {
@@ -496,4 +468,14 @@ export async function getOrderStats() {
       totalItems: o.totalItems,
     })),
   }
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Helpers
+// ─────────────────────────────────────────────────────────────────────────────
+
+function clientError(message: string): Error & { status: number } {
+  const err = new Error(message) as Error & { status: number }
+  err.status = 400
+  return err
 }

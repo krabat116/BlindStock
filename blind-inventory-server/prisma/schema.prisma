@@ -110,6 +110,9 @@ model CustomerOrder {
   customer     Customer    @relation(fields: [customerId], references: [id], onDelete: Cascade)
   items        OrderItem[]
 
+  // One-to-one: the uploaded Excel sheet that created this order
+  uploadedWorkOrderSheet UploadedWorkOrderSheet?
+
   @@index([customerId])
   @@index([orderYear, orderMonth])
   @@unique([orderYear, orderSheetNo])
@@ -145,6 +148,10 @@ model User {
   role         UserRole @default(STAFF)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+
+  // Work order relations
+  uploadedWorkOrderSheets UploadedWorkOrderSheet[]
+  workActivities          WorkActivity[]
 }
 
 enum UserRole {
@@ -158,4 +165,94 @@ model ContinuationRowRule {
   categoryName String
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
+}
+
+// ── Work Order models ──────────────────────────────────────────────────────
+
+/// Represents one uploaded Excel order sheet
+model UploadedWorkOrderSheet {
+  id              String   @id @default(cuid())
+  customerOrderId String   @unique   // 1-to-1 with CustomerOrder
+  fileName        String
+  fileHash        String   @unique   // SHA-256 for duplicate detection
+  fileSize        Int
+  uploadedById    Int
+  uploadedAt      DateTime @default(now())
+
+  customerOrder   CustomerOrder  @relation(fields: [customerOrderId], references: [id], onDelete: Cascade)
+  uploadedBy      User           @relation(fields: [uploadedById], references: [id])
+  workOrderGroups WorkOrderGroup[]
+}
+
+/// One Account + Customer Name combination within an uploaded sheet
+model WorkOrderGroup {
+  id                       String   @id @default(cuid())
+  uploadedWorkOrderSheetId String
+  account                  String
+  customerName             String
+  createdAt                DateTime @default(now())
+
+  uploadedSheet UploadedWorkOrderSheet @relation(fields: [uploadedWorkOrderSheetId], references: [id], onDelete: Cascade)
+  rows          WorkOrderRow[]
+
+  @@index([uploadedWorkOrderSheetId])
+  @@index([account, customerName])
+}
+
+/// One Excel data row — either a blind work row or an accessory/note row
+model WorkOrderRow {
+  id               String   @id @default(cuid())
+  workOrderGroupId String
+  sourceRowNumber  Int      // 1-based Excel row number; rows are shown in this order
+  isAccessoryRow   Boolean  @default(false)
+
+  // Blind work row fields
+  blindNumber       String?
+  additionalRef     String?  // column next to BLIND NO (tube override etc.)
+  room              String?
+  widthMm           Int?
+  dropMm            Int?
+  materialRange     String?
+  materialColour    String?
+  tape              String?
+  roll              String?
+  finish            String?
+  componentryColour String?
+  chainOperation    String?  // raw operation value, e.g. "SWIVEL 1250"
+  side              String?
+  chain             String?  // normalised chain type, e.g. "METAL"
+  quantity          Int?
+  accessoriesNotes  String?  // used for accessory rows and ACCESSORIES & NOTES column
+
+  createdAt DateTime @default(now())
+
+  group      WorkOrderGroup @relation(fields: [workOrderGroupId], references: [id], onDelete: Cascade)
+  activities WorkActivity[]
+
+  @@index([workOrderGroupId])
+}
+
+enum WorkType {
+  FABRIC_CUTTING
+  TUBE_CUTTING
+  ASSEMBLING
+  PACKING
+  INSPECTING
+}
+
+/// Staff member's work record for one row × work type combination
+model WorkActivity {
+  id             String   @id @default(cuid())
+  workOrderRowId String
+  workType       WorkType
+  staffUserId    Int
+  displayValue   String   // username for now; can be replaced with initials later
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+
+  workOrderRow WorkOrderRow @relation(fields: [workOrderRowId], references: [id], onDelete: Cascade)
+  staffUser    User         @relation(fields: [staffUserId], references: [id])
+
+  @@unique([workOrderRowId, workType])  // one activity per row per work type
+  @@index([staffUserId])
 }

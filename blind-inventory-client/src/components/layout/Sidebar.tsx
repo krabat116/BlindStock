@@ -41,6 +41,11 @@ export default function Sidebar() {
                 Customers
               </NavLink>
             </li>
+            <li>
+              <NavLink to="/work-orders" className={navClass}>
+                Work Orders
+              </NavLink>
+            </li>
 
             {isAdmin && (
               <>

@@ -104,7 +104,8 @@ const isArea = normalizedCategory === 'MATERIAL'
 | ---------------------- | ----------------------------------------------------------------------------------------------------------------------- |
 | `authRoutes.ts`        | POST /auth/login, GET /auth/me, GET/POST /auth/users                                                                    |
 | `itemRoutes.ts`        | GET /items, PATCH /items/:id/stock, PATCH /items/:id/adjust, PATCH /items/:id/settings, POST /items/bulk-create-missing |
-| `orderRoutes.ts`       | GET /orders/stats, POST /orders/preview, POST /orders/confirm-deduction                                                 |
+| `orderRoutes.ts`       | GET /orders/stats, POST /orders/preview, POST /orders/confirm-deduction (multipart/form-data)                           |
+| `workOrderRoutes.ts`   | GET /work-orders/groups, GET /work-orders/groups/:id, POST /work-orders/activities, DELETE /work-orders/activities/:id  |
 | `categoryRoutes.ts`    | 카테고리 CRUD                                                                                                           |
 | `customerRoutes.ts`    | 고객 관리                                                                                                               |
 | `transactionRoutes.ts` | 거래 이력                                                                                                               |
@@ -116,7 +117,8 @@ const isArea = normalizedCategory === 'MATERIAL'
 | 파일                       | 역할                                                     |
 | -------------------------- | -------------------------------------------------------- |
 | `itemService.ts`           | 재고 조회·추가·차감·설정, COUNT/LENGTH/AREA 전 분기 처리 |
-| `orderService.ts`          | 발주서 미리보기·확정 차감·통계                           |
+| `orderService.ts`          | 발주서 미리보기·확정 차감·통계 (confirm은 서버 재파싱)   |
+| `workOrderService.ts`      | 작업 지시서 저장·조회·활동 토글·삭제                    |
 | `authService.ts`           | JWT 인증, 사용자 관리                                    |
 | `customerService.ts`       | 고객 CRUD, 발주 이력                                     |
 | `fabricPacking.ts`         | 원단 면적 계산 (FFDH strip-packing 알고리즘)             |
@@ -130,10 +132,11 @@ const isArea = normalizedCategory === 'MATERIAL'
 ### Pages
 
 - `pages/inventory/InventoryPage.tsx` — 메인 대시보드 (재고 테이블, 발주 업로드, 통계)
-- `pages/CustomersPage.tsx` — 고객 목록
-- `pages/CustomerDetailPage.tsx` — 고객 상세 + 발주 이력
-- `pages/LoginPage.tsx` — 로그인
-- `pages/SettingsPage.tsx` — 관리자 전용 사용자 관리
+- `pages/customers/CustomersPage.tsx` — 고객 목록
+- `pages/customers/CustomerDetailPage.tsx` — 고객 상세 + 발주 이력
+- `pages/auth/LoginPage.tsx` — 로그인
+- `pages/settings/SettingsPage.tsx` — 관리자 전용 사용자 관리
+- `pages/workorders/WorkOrdersPage.tsx` — 작업 지시서 (그룹 목록 + 행별 작업 활동 토글)
 
 ### Components
 
@@ -152,6 +155,7 @@ const isArea = normalizedCategory === 'MATERIAL'
 - `types/inventory.tsx` — `InventoryItem`, `StockStatus`
 - `types/createItemPayload.ts` — `CreateItemPayload` (COUNT/LENGTH/AREA 유니온)
 - `types/orderPreview.ts` — `OrderPreviewItem`, `OrderPreviewResponse`
+- `types/workOrder.ts` — `WorkType`, `WorkActivity`, `WorkOrderRow`, `WorkOrderGroup`, `WorkOrderGroupDetail`, `ToggleActivityResult`
 
 ### Utils
 
@@ -161,6 +165,28 @@ const isArea = normalizedCategory === 'MATERIAL'
 ---
 
 ## 구현 완료 이력
+
+### 2026-07-28 — 디지털 작업 지시서 기능 전체 스택 구현
+
+Excel 발주서 업로드 확정 시 WorkOrderGroup + WorkOrderRow 자동 생성, 공장 직원이 작업 유형별 활동을 클릭으로 기록하는 기능 추가.
+
+**설계 결정사항:**
+- `confirmOrderDeduction`은 서버에서 Excel을 재파싱 (클라이언트 previewItems 신뢰 안 함)
+- 모든 DB 쓰기(CustomerOrder, 재고 차감, Transaction, WorkOrderSheet, WorkOrderGroups, WorkOrderRows)를 단일 `prisma.$transaction()`으로 원자적 처리
+- 중복 방지: fileHash + orderYear+orderSheetNo 두 가지 사전 검사 (트랜잭션 외부)
+- WorkActivity 토글: 본인 기록 → 삭제, 타인 기록 → 409 conflict, Admin → 강제 삭제 가능
+- `@@unique([workOrderRowId, workType])` 제약으로 한 행에 하나의 작업 유형당 하나의 담당자
+- `prisma generate` 필요: 스키마 변경 후 반드시 실행
+
+**추가된 Prisma 모델:** `UploadedWorkOrderSheet`, `WorkOrderGroup`, `WorkOrderRow`, `WorkActivity`, `WorkType` enum
+
+**변경 파일:**
+- 서버 스키마: `prisma/schema.prisma` + migration `20260728115149_add_work_orders`
+- 서버: `services/orderService.ts` (전면 재작성), `services/workOrderService.ts` (신규), `routes/orderRoutes.ts` (multer 추가), `routes/workOrderRoutes.ts` (신규), `index.ts` (라우트 등록)
+- 파서: `parseRecentOrderSheet.ts` (accessoryRows, raw fields 추가), `orderMapping.ts` (raw fields)
+- 클라이언트: `types/workOrder.ts` (신규), `pages/workorders/WorkOrdersPage.tsx` (신규), `App.tsx` (라우트 추가), `Sidebar.tsx` (Work Orders 링크), `InventoryPage.tsx` (confirm/batch → FormData)
+
+---
 
 ### 2026-05-17 — AREA StockType 전체 스택 구현
 

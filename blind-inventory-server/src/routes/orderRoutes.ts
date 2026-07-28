@@ -48,11 +48,26 @@ router.post("/preview", upload.single("file"), async (req, res) => {
 
 /**
  * POST /orders/confirm-deduction
- * Confirm stock deduction after preview
+ * Re-uploads the Excel file and atomically deducts stock + saves work order data.
+ * Requires the file to be sent as multipart/form-data (field: "file").
  */
-router.post("/confirm-deduction", async (req, res) => {
+router.post("/confirm-deduction", upload.single("file"), async (req, res) => {
   try {
-    const result = await confirmOrderDeduction(req.body)
+    if (!req.file) {
+      return res.status(400).json({ message: "File is required" })
+    }
+
+    const year = parseInt(req.body.year, 10)
+    const month = parseInt(req.body.month, 10)
+    const orderSheetNo = parseInt(req.body.orderSheetNo, 10)
+    const totalItems = parseInt(req.body.totalItems, 10)
+    const { fileName, accountName } = req.body
+
+    const result = await confirmOrderDeduction(
+      req.file.buffer,
+      { year, month, fileName, accountName, orderSheetNo, totalItems },
+      req.user!.id
+    )
     res.json(result)
   } catch (error) {
     console.error("Failed to confirm deduction:", error)

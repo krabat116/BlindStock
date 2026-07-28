@@ -13,12 +13,22 @@ export type ParsedContinuationComponent = {
   category: string
 }
 
+/** Raw accessory / note row captured for work order display */
+export type RawAccessoryRow = {
+  rowNumber: number
+  account: string
+  customerName: string
+  rawText: string // the original material-range cell text, e.g. "3X S BIRCH, 3X S BLACK BRACKETS"
+}
+
 export type ParsedOrderSheetResult = {
   orderSheetNo: number | null
   accountName: string
   totalItems: number
   rows: ParsedOrderRow[]
   continuationComponents: ParsedContinuationComponent[]
+  /** Raw accessory/note rows for work order group display */
+  accessoryRows: RawAccessoryRow[]
 }
 
 const columnAliases = {
@@ -31,10 +41,12 @@ const columnAliases = {
    * We also keep a few fallback names in case the Excel format changes later.
    */
   tubeOverride: ["COLUMN_3", "TUBE OVERRIDE", "OVERRIDE"],
+  room: ["ROOM"],
   width: ["WIDTH"],
   drop: ["DROP"],
   material: ["MATERIAL RANGE", "MATERIAL"],
   materialColour: ["MATERIAL COLOUR", "COLOUR", "COLOR"],
+  tape: ["TAPE"],
   finish: ["FINISH"],
   componentryColour: ["COMPONENTRY COLOUR", "ACCESSORIES"],  // 2016: "ACCESSORIES"
   chainType: ["CHN", "CHAIN", "MET CHN"],                   // 2016: "MET CHN"
@@ -42,6 +54,7 @@ const columnAliases = {
   sideWdr: ["SIDE WDR", "SIDE WDR.", "WDR", "SIDE"],
   roll: ["ROLL", "ROL."],                                    // 2016: "ROL."
   qty: ["QTY", "QUANTITY"],
+  accessoriesNotes: ["ACCESSORIES & NOTES"],
 }
 
 function normalizeHeader(value: unknown) {
@@ -286,6 +299,7 @@ export function parseRecentOrderSheet(
 
   const parsedRows: ParsedOrderRow[] = []
   const continuationComponents: ParsedContinuationComponent[] = []
+  const accessoryRows: RawAccessoryRow[] = []
 
   // Track the most recent componentry colour seen on a blind row.
   // Used as fallback when a bracket/combo row has no colour in its material text.
@@ -318,6 +332,10 @@ export function parseRecentOrderSheet(
       const category = matchCategory(materialRange, rules)
       // "IGNORE" is a reserved category name — skip this row entirely
       if (category.toUpperCase() === "IGNORE") return
+
+      // Save raw accessory row for work order display
+      accessoryRows.push({ rowNumber, account, customerName, rawText: materialRange })
+
       continuationComponents.push(
         ...parseContinuationRow(rowNumber, account, customerName, materialRange, category, lastComponentryColour)
       )
@@ -326,6 +344,11 @@ export function parseRecentOrderSheet(
 
     const materialColour = toText(
       getValueByAliases(row, columnAliases.materialColour)
+    )
+    const room = toText(getValueByAliases(row, columnAliases.room))
+    const tape = toText(getValueByAliases(row, columnAliases.tape))
+    const accessoriesNotes = toText(
+      getValueByAliases(row, columnAliases.accessoriesNotes)
     )
     const finish = toText(getValueByAliases(row, columnAliases.finish))
     const componentryColour = toText(
@@ -385,6 +408,13 @@ export function parseRecentOrderSheet(
       qty: qtyRaw && qtyRaw > 0 ? qtyRaw : 1,
       tubeOverride,
       isReskin,
+      // Raw fields for work order display
+      blindNo,
+      room,
+      materialRangePart: materialRange,
+      materialColourPart: materialColour,
+      tape,
+      accessoriesNotes,
     })
   })
 
@@ -398,5 +428,6 @@ export function parseRecentOrderSheet(
     totalItems,
     rows: parsedRows,
     continuationComponents,
+    accessoryRows,
   }
 }
