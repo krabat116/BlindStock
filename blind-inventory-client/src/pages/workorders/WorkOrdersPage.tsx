@@ -23,6 +23,7 @@ export default function WorkOrdersPage() {
   const [conflictMessage, setConflictMessage] = useState("")
   // rowId:workType → true means that cell is currently being submitted
   const [activityLoading, setActivityLoading] = useState<string | null>(null)
+  const [activeTab, setActiveTab] = useState<"sheet" | "activity">("sheet")
 
   useEffect(() => {
     fetchGroups()
@@ -30,6 +31,7 @@ export default function WorkOrdersPage() {
 
   useEffect(() => {
     if (selectedGroupId) {
+      setActiveTab("sheet")
       fetchDetail(selectedGroupId)
     } else {
       setDetail(null)
@@ -182,156 +184,260 @@ export default function WorkOrdersPage() {
                       {new Date(detail.uploadedSheet.uploadedAt).toLocaleString()}
                     </p>
                   </div>
-                  {conflictMessage && (
-                    <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-1.5 shrink-0">
-                      {conflictMessage}
-                    </p>
-                  )}
+                  <div className="flex items-center gap-3 shrink-0">
+                    {conflictMessage && (
+                      <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-1.5">
+                        {conflictMessage}
+                      </p>
+                    )}
+                    {/* Tab buttons */}
+                    <div className="flex rounded-lg border border-gray-200 overflow-hidden text-xs font-medium">
+                      <button
+                        onClick={() => setActiveTab("sheet")}
+                        className={[
+                          "px-3 py-1.5 transition-colors",
+                          activeTab === "sheet"
+                            ? "bg-gray-900 text-white"
+                            : "text-gray-500 hover:bg-gray-50",
+                        ].join(" ")}
+                      >
+                        시트 보기
+                      </button>
+                      <button
+                        onClick={() => setActiveTab("activity")}
+                        className={[
+                          "px-3 py-1.5 border-l border-gray-200 transition-colors",
+                          activeTab === "activity"
+                            ? "bg-gray-900 text-white"
+                            : "text-gray-500 hover:bg-gray-50",
+                        ].join(" ")}
+                      >
+                        활동 기록
+                      </button>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Work order table */}
-                <div className="overflow-x-auto">
-                  <table className="w-full text-xs">
-                    <thead>
-                      <tr className="border-b border-gray-100 bg-gray-50 text-left">
-                        <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Blind #</th>
-                        <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Ref</th>
-                        <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Room</th>
-                        <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">W × D (mm)</th>
-                        <th className="px-3 py-2 font-medium text-gray-500">Material</th>
-                        <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Tape</th>
-                        <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Roll</th>
-                        <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Finish</th>
-                        <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Comp.</th>
-                        <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Op / Side / Chain</th>
-                        <th className="px-3 py-2 text-center font-medium text-gray-500 whitespace-nowrap">Qty</th>
-                        {ALL_WORK_TYPES.map((wt) => (
-                          <th
-                            key={wt}
-                            className="px-2 py-2 text-center font-medium text-gray-500 whitespace-nowrap min-w-[68px]"
-                          >
-                            {WORK_TYPE_LABELS[wt]}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody className="divide-y divide-gray-100">
-                      {detail.rows.map((row) => {
-                        // Accessory / note row spans all columns
-                        if (row.isAccessoryRow) {
+                {/* ── Sheet view ───────────────────────────────────────────── */}
+                {activeTab === "sheet" && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-gray-100 bg-gray-50 text-left">
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Blind #</th>
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Ref</th>
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Room</th>
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">W × D (mm)</th>
+                          <th className="px-3 py-2 font-medium text-gray-500">Material</th>
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Tape</th>
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Roll</th>
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Finish</th>
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Comp.</th>
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Op / Side / Chain</th>
+                          <th className="px-3 py-2 text-center font-medium text-gray-500 whitespace-nowrap">Qty</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {detail.rows.map((row) => {
+                          if (row.isAccessoryRow) {
+                            return (
+                              <tr key={row.id} className="bg-amber-50/40">
+                                <td colSpan={11} className="px-3 py-1.5 text-gray-500 italic">
+                                  {row.accessoriesNotes}
+                                </td>
+                              </tr>
+                            )
+                          }
                           return (
-                            <tr key={row.id} className="bg-amber-50/40">
-                              <td
-                                colSpan={11 + ALL_WORK_TYPES.length}
-                                className="px-3 py-1.5 text-gray-500 italic"
-                              >
-                                {row.accessoriesNotes}
+                            <tr key={row.id} className="hover:bg-gray-50/60">
+                              <td className="px-3 py-2 font-medium text-gray-700 whitespace-nowrap">
+                                {row.blindNumber || "—"}
+                              </td>
+                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                                {row.additionalRef ?? ""}
+                              </td>
+                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                                {row.room ?? ""}
+                              </td>
+                              <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                                {row.widthMm !== null && row.dropMm !== null
+                                  ? `${row.widthMm} × ${row.dropMm}`
+                                  : "—"}
+                              </td>
+                              <td className="px-3 py-2 text-gray-700">
+                                {[row.materialRange, row.materialColour]
+                                  .filter(Boolean)
+                                  .join(" ") || "—"}
+                              </td>
+                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                                {row.tape ?? ""}
+                              </td>
+                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                                {row.roll ?? ""}
+                              </td>
+                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                                {row.finish ?? ""}
+                              </td>
+                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                                {row.componentryColour ?? ""}
+                              </td>
+                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                                {[row.chainOperation, row.side, row.chain]
+                                  .filter(Boolean)
+                                  .join(" / ")}
+                              </td>
+                              <td className="px-3 py-2 text-center text-gray-700">
+                                {row.quantity ?? 1}
                               </td>
                             </tr>
                           )
-                        }
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
 
-                        return (
-                          <tr key={row.id} className="hover:bg-gray-50/60">
-                            <td className="px-3 py-2 font-medium text-gray-700 whitespace-nowrap">
-                              {row.blindNumber || "—"}
-                            </td>
-                            <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
-                              {row.additionalRef ?? ""}
-                            </td>
-                            <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
-                              {row.room ?? ""}
-                            </td>
-                            <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
-                              {row.widthMm !== null && row.dropMm !== null
-                                ? `${row.widthMm} × ${row.dropMm}`
-                                : "—"}
-                            </td>
-                            <td className="px-3 py-2 text-gray-700">
-                              {[row.materialRange, row.materialColour]
-                                .filter(Boolean)
-                                .join(" ") || "—"}
-                            </td>
-                            <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
-                              {row.tape ?? ""}
-                            </td>
-                            <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
-                              {row.roll ?? ""}
-                            </td>
-                            <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
-                              {row.finish ?? ""}
-                            </td>
-                            <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
-                              {row.componentryColour ?? ""}
-                            </td>
-                            <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
-                              {[row.chainOperation, row.side, row.chain]
-                                .filter(Boolean)
-                                .join(" / ")}
-                            </td>
-                            <td className="px-3 py-2 text-center text-gray-700">
-                              {row.quantity ?? 1}
-                            </td>
+                {/* ── Activity log ─────────────────────────────────────────── */}
+                {activeTab === "activity" && (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-gray-100 bg-gray-50 text-left">
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Blind #</th>
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Ref</th>
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Room</th>
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">W × D (mm)</th>
+                          <th className="px-3 py-2 font-medium text-gray-500">Material</th>
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Tape</th>
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Roll</th>
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Finish</th>
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Comp.</th>
+                          <th className="px-3 py-2 font-medium text-gray-500 whitespace-nowrap">Op / Side / Chain</th>
+                          <th className="px-3 py-2 text-center font-medium text-gray-500 whitespace-nowrap">Qty</th>
+                          {ALL_WORK_TYPES.map((wt) => (
+                            <th
+                              key={wt}
+                              className="px-2 py-2 text-center font-medium text-gray-500 whitespace-nowrap min-w-17"
+                            >
+                              {WORK_TYPE_LABELS[wt]}
+                            </th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-gray-100">
+                        {detail.rows.map((row) => {
+                          if (row.isAccessoryRow) {
+                            return (
+                              <tr key={row.id} className="bg-amber-50/40">
+                                <td
+                                  colSpan={11 + ALL_WORK_TYPES.length}
+                                  className="px-3 py-1.5 text-gray-500 italic"
+                                >
+                                  {row.accessoriesNotes}
+                                </td>
+                              </tr>
+                            )
+                          }
 
-                            {/* Work activity cells */}
-                            {ALL_WORK_TYPES.map((wt) => {
-                              const activity = row.activities.find((a) => a.workType === wt)
-                              const isMyActivity = activity?.staffUser.id === user?.id
-                              const isBusy = activityLoading === `${row.id}:${wt}`
+                          return (
+                            <tr key={row.id} className="hover:bg-gray-50/60">
+                              <td className="px-3 py-2 font-medium text-gray-700 whitespace-nowrap">
+                                {row.blindNumber || "—"}
+                              </td>
+                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                                {row.additionalRef ?? ""}
+                              </td>
+                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                                {row.room ?? ""}
+                              </td>
+                              <td className="px-3 py-2 text-gray-700 whitespace-nowrap">
+                                {row.widthMm !== null && row.dropMm !== null
+                                  ? `${row.widthMm} × ${row.dropMm}`
+                                  : "—"}
+                              </td>
+                              <td className="px-3 py-2 text-gray-700">
+                                {[row.materialRange, row.materialColour]
+                                  .filter(Boolean)
+                                  .join(" ") || "—"}
+                              </td>
+                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                                {row.tape ?? ""}
+                              </td>
+                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                                {row.roll ?? ""}
+                              </td>
+                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                                {row.finish ?? ""}
+                              </td>
+                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                                {row.componentryColour ?? ""}
+                              </td>
+                              <td className="px-3 py-2 text-gray-500 whitespace-nowrap">
+                                {[row.chainOperation, row.side, row.chain]
+                                  .filter(Boolean)
+                                  .join(" / ")}
+                              </td>
+                              <td className="px-3 py-2 text-center text-gray-700">
+                                {row.quantity ?? 1}
+                              </td>
 
-                              // Someone else owns it (non-admin staff: read-only)
-                              if (activity && !isMyActivity && !isAdmin) {
-                                return (
-                                  <td key={wt} className="px-2 py-1.5 text-center">
-                                    <span className="inline-flex items-center justify-center rounded bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600 cursor-default select-none">
-                                      {activity.displayValue}
-                                    </span>
-                                  </td>
-                                )
-                              }
+                              {/* Work activity cells */}
+                              {ALL_WORK_TYPES.map((wt) => {
+                                const activity = row.activities.find((a) => a.workType === wt)
+                                const isMyActivity = activity?.staffUser.id === user?.id
+                                const isBusy = activityLoading === `${row.id}:${wt}`
 
-                              // Owned by me OR admin (can delete)
-                              if (activity) {
+                                if (activity && !isMyActivity && !isAdmin) {
+                                  return (
+                                    <td key={wt} className="px-2 py-1.5 text-center">
+                                      <span className="inline-flex items-center justify-center rounded bg-gray-200 px-2 py-0.5 text-xs font-medium text-gray-600 cursor-default select-none">
+                                        {activity.displayValue}
+                                      </span>
+                                    </td>
+                                  )
+                                }
+
+                                if (activity) {
+                                  return (
+                                    <td key={wt} className="px-2 py-1.5 text-center">
+                                      <button
+                                        onClick={() =>
+                                          isMyActivity
+                                            ? handleCellClick(row.id, wt)
+                                            : handleDeleteActivity(activity.id)
+                                        }
+                                        disabled={isBusy}
+                                        title={isAdmin && !isMyActivity ? "Delete (admin)" : "Click to undo"}
+                                        className="inline-flex items-center justify-center rounded bg-gray-900 px-2 py-0.5 text-xs font-medium text-white hover:bg-red-600 transition-colors disabled:opacity-40 min-w-13"
+                                      >
+                                        {isBusy ? "…" : activity.displayValue}
+                                      </button>
+                                    </td>
+                                  )
+                                }
+
                                 return (
                                   <td key={wt} className="px-2 py-1.5 text-center">
                                     <button
-                                      onClick={() =>
-                                        isMyActivity
-                                          ? handleCellClick(row.id, wt)
-                                          : handleDeleteActivity(activity.id)
-                                      }
+                                      onClick={() => handleCellClick(row.id, wt)}
                                       disabled={isBusy}
-                                      title={isAdmin && !isMyActivity ? "Delete (admin)" : "Click to undo"}
-                                      className="inline-flex items-center justify-center rounded bg-gray-900 px-2 py-0.5 text-xs font-medium text-white hover:bg-red-600 transition-colors disabled:opacity-40 min-w-[52px]"
+                                      className="inline-flex h-6 w-14 items-center justify-center rounded border border-dashed border-gray-300 text-gray-300 hover:border-gray-500 hover:text-gray-500 transition-colors disabled:opacity-40"
                                     >
-                                      {isBusy ? "…" : activity.displayValue}
+                                      {isBusy ? "…" : ""}
                                     </button>
                                   </td>
                                 )
-                              }
+                              })}
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
 
-                              // Empty — click to claim
-                              return (
-                                <td key={wt} className="px-2 py-1.5 text-center">
-                                  <button
-                                    onClick={() => handleCellClick(row.id, wt)}
-                                    disabled={isBusy}
-                                    className="inline-flex h-6 w-14 items-center justify-center rounded border border-dashed border-gray-300 text-gray-300 hover:border-gray-500 hover:text-gray-500 transition-colors disabled:opacity-40"
-                                  >
-                                    {isBusy ? "…" : ""}
-                                  </button>
-                                </td>
-                              )
-                            })}
-                          </tr>
-                        )
-                      })}
-                    </tbody>
-                  </table>
-                </div>
-
-                {/* Accessories notes footer (from blind rows) */}
-                {detail.rows.some((r) => !r.isAccessoryRow && r.accessoriesNotes) && (
+                {/* Accessories notes footer (sheet view only, from blind rows) */}
+                {activeTab === "sheet" && detail.rows.some((r) => !r.isAccessoryRow && r.accessoriesNotes) && (
                   <div className="border-t border-gray-100 px-5 py-3 space-y-0.5">
                     <p className="text-xs font-medium text-gray-500 mb-1">Accessories & Notes</p>
                     {detail.rows
