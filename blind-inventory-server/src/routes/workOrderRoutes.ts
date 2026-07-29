@@ -4,6 +4,7 @@ import prisma from "../lib/prisma"
 import {
   getWorkOrderGroups,
   getWorkOrderGroupById,
+  getWorkOrderSheetById,
   toggleWorkActivity,
   deleteWorkActivity,
 } from "../services/workOrderService"
@@ -43,6 +44,24 @@ router.get("/groups/:id", async (req, res) => {
   } catch (error) {
     console.error("Failed to fetch work order group:", error)
     res.status(500).json({ message: "Failed to fetch work order group" })
+  }
+})
+
+/**
+ * GET /work-orders/sheets/:id
+ * Returns one uploaded sheet with all groups and all their rows + activities.
+ * Used by the Page tab detail view.
+ */
+router.get("/sheets/:id", async (req, res) => {
+  try {
+    const sheet = await getWorkOrderSheetById(prisma, req.params.id)
+    if (!sheet) {
+      return res.status(404).json({ message: "Work order sheet not found" })
+    }
+    res.json(sheet)
+  } catch (error) {
+    console.error("Failed to fetch work order sheet:", error)
+    res.status(500).json({ message: "Failed to fetch work order sheet" })
   }
 })
 

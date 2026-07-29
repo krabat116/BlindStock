@@ -194,6 +194,49 @@ export async function getWorkOrderGroupById(prisma: TxClient, id: string) {
   return group
 }
 
+/**
+ * Returns one sheet with all groups and all their rows + activities.
+ * Used by GET /work-orders/sheets/:id (Page tab detail view).
+ */
+export async function getWorkOrderSheetById(prisma: TxClient, id: string) {
+  const sheet = await prisma.uploadedWorkOrderSheet.findUnique({
+    where: { id },
+    include: {
+      uploadedBy: { select: { username: true } },
+      workOrderGroups: {
+        orderBy: { createdAt: "asc" },
+        include: {
+          rows: {
+            orderBy: { sourceRowNumber: "asc" },
+            include: {
+              activities: {
+                include: {
+                  staffUser: { select: { id: true, username: true } },
+                },
+              },
+            },
+          },
+        },
+      },
+    },
+  })
+
+  if (!sheet) return null
+
+  return {
+    id: sheet.id,
+    fileName: sheet.fileName,
+    uploadedAt: sheet.uploadedAt,
+    uploadedBy: sheet.uploadedBy.username,
+    groups: sheet.workOrderGroups.map((g) => ({
+      id: g.id,
+      account: g.account,
+      customerName: g.customerName,
+      rows: g.rows,
+    })),
+  }
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Activity helpers
 // ─────────────────────────────────────────────────────────────────────────────

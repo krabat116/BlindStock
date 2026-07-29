@@ -74,6 +74,19 @@ export type WorkOrderGroupDetail = {
   rows: WorkOrderRow[]
 }
 
+export type WorkOrderSheetDetail = {
+  id: string
+  fileName: string
+  uploadedAt: string
+  uploadedBy: string
+  groups: Array<{
+    id: string
+    account: string
+    customerName: string
+    rows: WorkOrderRow[]
+  }>
+}
+
 // Toggle response shapes
 export type ToggleActivityResult =
   | { action: "created"; activity: { id: string; displayValue: string; workType: WorkType } }
