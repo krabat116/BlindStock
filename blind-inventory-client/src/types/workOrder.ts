@@ -63,6 +63,8 @@ export type WorkOrderGroup = {
   uploadedAt: string
   uploadedBy: string
   rowCount: number
+  orderYear: number
+  orderMonth: number
 }
 
 export type WorkOrderGroupDetail = {

@@ -147,6 +147,7 @@ export async function getWorkOrderGroups(prisma: TxClient) {
           fileName: true,
           uploadedAt: true,
           uploadedBy: { select: { username: true } },
+          customerOrder: { select: { orderYear: true, orderMonth: true } },
         },
       },
       _count: { select: { rows: true } },
@@ -164,6 +165,8 @@ export async function getWorkOrderGroups(prisma: TxClient) {
     uploadedAt: g.uploadedSheet.uploadedAt,
     uploadedBy: g.uploadedSheet.uploadedBy.username,
     rowCount: g._count.rows,
+    orderYear: g.uploadedSheet.customerOrder.orderYear,
+    orderMonth: g.uploadedSheet.customerOrder.orderMonth,
   }))
 }
 

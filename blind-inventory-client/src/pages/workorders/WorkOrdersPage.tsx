@@ -54,30 +54,29 @@ export default function WorkOrdersPage() {
   const [conflictMessage, setConflictMessage] = useState("")
   const [activityLoading, setActivityLoading] = useState<string | null>(null)
 
-  // ── Derived: available years ─────────────────────────────────────────────
+  // ── Derived: available years (from orderYear, newest first) ─────────────
   const availableYears = useMemo(() => {
-    const years = new Set(groups.map((g) => new Date(g.uploadedAt).getFullYear()))
-    return Array.from(years).sort((a, b) => b - a) // newest first
+    const years = new Set(groups.map((g) => g.orderYear))
+    return Array.from(years).sort((a, b) => b - a)
   }, [groups])
 
-  // ── Derived: available months for selected year ──────────────────────────
+  // ── Derived: available months for selected year (from orderMonth) ────────
   const availableMonths = useMemo(() => {
     if (!selectedYear) return []
     const months = new Set(
       groups
-        .filter((g) => new Date(g.uploadedAt).getFullYear() === selectedYear)
-        .map((g) => new Date(g.uploadedAt).getMonth() + 1)
+        .filter((g) => g.orderYear === selectedYear)
+        .map((g) => g.orderMonth)
     )
     return Array.from(months).sort((a, b) => a - b)
   }, [groups, selectedYear])
 
-  // ── Derived: filtered groups ─────────────────────────────────────────────
+  // ── Derived: filtered groups by orderYear / orderMonth ───────────────────
   const filteredGroups = useMemo(() => {
     if (!selectedYear || !selectedMonth) return []
-    return groups.filter((g) => {
-      const d = new Date(g.uploadedAt)
-      return d.getFullYear() === selectedYear && d.getMonth() + 1 === selectedMonth
-    })
+    return groups.filter(
+      (g) => g.orderYear === selectedYear && g.orderMonth === selectedMonth
+    )
   }, [groups, selectedYear, selectedMonth])
 
   // ── Derived: unique sheets (for Page tab), sorted by page number ─────────
@@ -109,13 +108,14 @@ export default function WorkOrdersPage() {
     fetchGroups()
   }, [])
 
-  // Auto-select most recent year/month when groups first load
+  // Auto-select most recent orderYear/orderMonth when groups first load
   useEffect(() => {
     if (groups.length > 0 && selectedYear === null) {
-      const maxTime = Math.max(...groups.map((g) => new Date(g.uploadedAt).getTime()))
-      const maxDate = new Date(maxTime)
-      setSelectedYear(maxDate.getFullYear())
-      setSelectedMonth(maxDate.getMonth() + 1)
+      const latest = groups.reduce((a, b) =>
+        a.orderYear > b.orderYear || (a.orderYear === b.orderYear && a.orderMonth > b.orderMonth) ? a : b
+      )
+      setSelectedYear(latest.orderYear)
+      setSelectedMonth(latest.orderMonth)
     }
   }, [groups, selectedYear])
 
